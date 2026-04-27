@@ -38,6 +38,7 @@ option(DAFENG_BUILD_PLUGIN    "Build librime Lua bridge plugin"       ON)
 option(DAFENG_BUILD_CLI       "Build dafeng-cli debugging tool"       ON)
 option(DAFENG_ENABLE_MLX      "Enable MLX inference backend (Mac)"    OFF)
 option(DAFENG_ENABLE_LLAMA_CPP "Enable llama.cpp inference backend"   OFF)
+option(DAFENG_ENABLE_GIT_SYNC "Enable libgit2 userdata sync"          ON)
 
 # ---- Platform sanity ----------------------------------------------------------
 
@@ -83,4 +84,5 @@ message(STATUS "  Plugin (Lua)   : ${DAFENG_BUILD_PLUGIN}")
 message(STATUS "  CLI tool       : ${DAFENG_BUILD_CLI}")
 message(STATUS "  MLX backend    : ${DAFENG_ENABLE_MLX}")
 message(STATUS "  llama.cpp      : ${DAFENG_ENABLE_LLAMA_CPP}")
+message(STATUS "  Git sync       : ${DAFENG_ENABLE_GIT_SYNC}")
 message(STATUS "")

@@ -8,6 +8,7 @@ add_executable(dafeng_unit_tests
   ngram_test.cc
   new_word_test.cc
   user_dict_test.cc
+  git_sync_test.cc
 )
 
 target_link_libraries(dafeng_unit_tests

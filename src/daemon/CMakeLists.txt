@@ -15,6 +15,12 @@ set(DAFENG_DAEMON_SOURCES
   user_dict.cc
 )
 
+if(DAFENG_ENABLE_GIT_SYNC)
+  list(APPEND DAFENG_DAEMON_SOURCES git_sync.cc)
+else()
+  list(APPEND DAFENG_DAEMON_SOURCES git_sync_stub.cc)
+endif()
+
 if(DAFENG_ENABLE_MLX AND APPLE)
   list(APPEND DAFENG_DAEMON_SOURCES reranker_mlx.cc)
 else()
@@ -25,6 +31,20 @@ add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
 
 find_package(SQLite3 REQUIRED)
 target_link_libraries(dafeng_daemon_core PRIVATE SQLite::SQLite3)
+
+if(DAFENG_ENABLE_GIT_SYNC)
+  find_path(GIT2_INCLUDE_DIR git2.h HINTS /opt/homebrew/include /usr/local/include)
+  find_library(GIT2_LIBRARY git2 HINTS /opt/homebrew/lib /usr/local/lib)
+  if(GIT2_INCLUDE_DIR AND GIT2_LIBRARY)
+    message(STATUS "dafeng: libgit2 at ${GIT2_INCLUDE_DIR}")
+    target_include_directories(dafeng_daemon_core PRIVATE ${GIT2_INCLUDE_DIR})
+    target_link_libraries(dafeng_daemon_core PRIVATE ${GIT2_LIBRARY})
+  else()
+    message(WARNING
+      "dafeng: DAFENG_ENABLE_GIT_SYNC=ON but libgit2 not found. "
+      "Install via 'brew install libgit2'. Sync will be a no-op at runtime.")
+  endif()
+endif()
 
 if(DAFENG_ENABLE_MLX AND APPLE)
   # mlx-c provides a C API for MLX; we link against it when present.
