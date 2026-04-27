@@ -10,6 +10,7 @@ set(DAFENG_DAEMON_SOURCES
   mock_reranker.cc
   reranker_deterministic.cc
   history_store.cc
+  ngram.cc
 )
 
 if(DAFENG_ENABLE_MLX AND APPLE)
