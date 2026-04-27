@@ -22,11 +22,7 @@ else()
     -Wno-unused-parameter
     -Wshadow
     -Wnon-virtual-dtor
-    -fno-rtti  # librime itself disables RTTI; stay compatible.
   )
-  if(APPLE)
-    target_compile_options(dafeng_compiler_flags INTERFACE
-      -fobjc-arc
-    )
-  endif()
+  # The librime plugin matches librime's own -fno-rtti via its own target;
+  # the daemon and client don't need it.
 endif()
