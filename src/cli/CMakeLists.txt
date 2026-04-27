@@ -1,2 +1,11 @@
 # dafeng-cli — debugging / smoke-test command-line tool.
-# Populated in S6.
+
+add_executable(dafeng-cli
+  main.cc
+)
+
+target_link_libraries(dafeng-cli
+  PRIVATE
+    dafeng::client
+    dafeng::compiler_flags
+)

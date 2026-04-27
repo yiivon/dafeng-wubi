@@ -83,6 +83,47 @@ class DafengClient::Impl {
     return *resp;
   }
 
+  bool Ping(milliseconds timeout) {
+    const auto deadline = steady_clock::now() + timeout;
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!EnsureConnectedLocked()) return false;
+
+    PingMessage ping;
+    ping.request_id = next_request_id_.fetch_add(1);
+    const auto frame = EncodeFrame(EncodeBody(ping));
+    if (!conn_->WriteAll(frame.data(), frame.size(), Remaining(deadline))) {
+      ResetLocked();
+      return false;
+    }
+
+    uint8_t header[kFrameHeaderBytes];
+    if (!conn_->ReadFull(header, sizeof(header), Remaining(deadline))) {
+      ResetLocked();
+      return false;
+    }
+    const auto body_len = ReadFrameLength(header, sizeof(header));
+    if (!body_len) {
+      ResetLocked();
+      return false;
+    }
+    std::vector<uint8_t> body(*body_len);
+    if (!conn_->ReadFull(body.data(), body.size(), Remaining(deadline))) {
+      ResetLocked();
+      return false;
+    }
+    auto msg = DecodeBody(body.data(), body.size());
+    if (!msg) {
+      ResetLocked();
+      return false;
+    }
+    auto* pong = std::get_if<PongMessage>(&*msg);
+    if (pong == nullptr || pong->request_id != ping.request_id) {
+      ResetLocked();
+      return false;
+    }
+    return true;
+  }
+
   void RecordCommit(const std::string& code, const std::string& text,
                     const std::string& ctx) {
     std::lock_guard<std::mutex> lock(mu_);
@@ -147,6 +188,8 @@ std::optional<RerankResponse> DafengClient::Rerank(const RerankRequest& req,
                                                     milliseconds timeout) {
   return impl_->Rerank(req, timeout);
 }
+
+bool DafengClient::Ping(milliseconds timeout) { return impl_->Ping(timeout); }
 
 void DafengClient::RecordCommit(const std::string& code,
                                  const std::string& committed_text,

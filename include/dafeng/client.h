@@ -40,6 +40,10 @@ class DAFENG_API DafengClient {
   std::optional<RerankResponse> Rerank(const RerankRequest& req,
                                         std::chrono::milliseconds timeout);
 
+  // Liveness probe. Returns true iff the daemon answered Pong within timeout.
+  // Useful for self-tests / benchmarks; not part of the IME hot path.
+  bool Ping(std::chrono::milliseconds timeout);
+
   // Cold path. Never blocks on a response.
   void RecordCommit(const std::string& code,
                     const std::string& committed_text,
