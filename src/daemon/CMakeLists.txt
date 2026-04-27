@@ -9,6 +9,7 @@ set(DAFENG_DAEMON_SOURCES
   server.cc
   mock_reranker.cc
   reranker_deterministic.cc
+  history_store.cc
 )
 
 if(DAFENG_ENABLE_MLX AND APPLE)
@@ -18,6 +19,9 @@ else()
 endif()
 
 add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
+
+find_package(SQLite3 REQUIRED)
+target_link_libraries(dafeng_daemon_core PRIVATE SQLite::SQLite3)
 
 if(DAFENG_ENABLE_MLX AND APPLE)
   # mlx-c provides a C API for MLX; we link against it when present.

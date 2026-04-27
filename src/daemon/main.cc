@@ -12,6 +12,7 @@
 #include "dafeng/endpoint.h"
 #include "dafeng/logging.h"
 #include "dafeng/paths.h"
+#include "history_store.h"
 #include "server.h"
 #include "services.h"
 
@@ -152,8 +153,18 @@ int main(int argc, char** argv) {
 
   auto reranker = BuildReranker(backend, model_path);
 
+  // History store lives under the data dir. The privacy guard in
+  // MakeSqliteHistoryStore refuses paths outside data_root.
+  const auto data_root = dafeng::GetDataDir();
+  const auto db_path = data_root / "history.db";
+  std::shared_ptr<dafeng::IHistoryStore> history(
+      dafeng::MakeSqliteHistoryStore(db_path, data_root));
+  std::unique_ptr<dafeng::ICommitLogger> logger =
+      history ? dafeng::MakeSqliteCommitLogger(history)
+              : dafeng::MakeNullCommitLogger();
+
   dafeng::Server server(std::move(endpoint), std::move(reranker),
-                        dafeng::MakeNullCommitLogger());
+                        std::move(logger));
   g_server = &server;
   InstallSignalHandlers();
 

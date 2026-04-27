@@ -55,8 +55,14 @@ struct MLXRerankConfig {
 std::unique_ptr<IRerankService> MakeMLXRerankService(
     const MLXRerankConfig& config);
 
-// Phase 2.1: a no-op commit logger. Real impl (SQLite-backed) lands in
-// Phase 2.4 as MakeSqliteCommitLogger.
+// Phase 2.1: a no-op commit logger. Used by tests.
 std::unique_ptr<ICommitLogger> MakeNullCommitLogger();
+
+// Phase 2.4: SQLite-backed commit logger. Wraps an IHistoryStore (defined
+// in history_store.h). Returns nullptr if the store isn't constructible
+// (privacy guard rejected the path, file system error, etc).
+class IHistoryStore;
+std::unique_ptr<ICommitLogger> MakeSqliteCommitLogger(
+    std::shared_ptr<IHistoryStore> store);
 
 }  // namespace dafeng

@@ -1,6 +1,9 @@
 #include "services.h"
 
+#include "history_store.h"
+
 #include <chrono>
+#include <utility>
 
 namespace dafeng {
 
@@ -32,6 +35,17 @@ class NullCommitLogger final : public ICommitLogger {
   void Record(const CommitEvent&) override {}
 };
 
+class SqliteCommitLogger final : public ICommitLogger {
+ public:
+  explicit SqliteCommitLogger(std::shared_ptr<IHistoryStore> store)
+      : store_(std::move(store)) {}
+  void Record(const CommitEvent& ev) override {
+    if (store_) (void)store_->Insert(ev);  // best-effort; cold path
+  }
+ private:
+  std::shared_ptr<IHistoryStore> store_;
+};
+
 }  // namespace
 
 std::unique_ptr<IRerankService> MakeMockReverseRerankService() {
@@ -40,6 +54,12 @@ std::unique_ptr<IRerankService> MakeMockReverseRerankService() {
 
 std::unique_ptr<ICommitLogger> MakeNullCommitLogger() {
   return std::make_unique<NullCommitLogger>();
+}
+
+std::unique_ptr<ICommitLogger> MakeSqliteCommitLogger(
+    std::shared_ptr<IHistoryStore> store) {
+  if (!store) return nullptr;
+  return std::make_unique<SqliteCommitLogger>(std::move(store));
 }
 
 }  // namespace dafeng
