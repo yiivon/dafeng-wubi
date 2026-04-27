@@ -19,6 +19,26 @@ endif()
 
 add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
 
+if(DAFENG_ENABLE_MLX AND APPLE)
+  # mlx-c provides a C API for MLX; we link against it when present.
+  # If brew has it: /opt/homebrew/include/mlx/c/mlx.h + /opt/homebrew/lib/libmlxc.dylib
+  find_path(MLX_C_INCLUDE_DIR mlx/c/mlx.h
+    HINTS /opt/homebrew/include /usr/local/include)
+  find_library(MLX_C_LIBRARY mlxc
+    HINTS /opt/homebrew/lib /usr/local/lib)
+  find_library(MLX_LIBRARY mlx
+    HINTS /opt/homebrew/lib /usr/local/lib)
+  if(MLX_C_INCLUDE_DIR AND MLX_C_LIBRARY AND MLX_LIBRARY)
+    message(STATUS "dafeng: MLX found at ${MLX_C_INCLUDE_DIR}")
+    target_include_directories(dafeng_daemon_core PRIVATE ${MLX_C_INCLUDE_DIR})
+    target_link_libraries(dafeng_daemon_core PRIVATE ${MLX_C_LIBRARY} ${MLX_LIBRARY})
+  else()
+    message(WARNING "dafeng: DAFENG_ENABLE_MLX=ON but mlx / mlx-c not found. "
+                    "Install via 'brew install mlx-c'. The reranker will run "
+                    "via the deterministic fallback at runtime.")
+  endif()
+endif()
+
 target_include_directories(dafeng_daemon_core
   PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"

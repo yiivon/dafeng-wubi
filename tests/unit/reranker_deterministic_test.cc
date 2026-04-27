@@ -153,11 +153,21 @@ TEST(DeterministicRerankerTest, ScoresAreSortedDescending) {
   }
 }
 
-TEST(DeterministicRerankerTest, MLXStubReturnsNull) {
-  // When MLX isn't built in (the default), the factory must return null
-  // so the daemon can fall back without crashing.
+TEST(DeterministicRerankerTest, MLXFactoryReturnsNullWithMissingModel) {
+  // Two paths converge to the same observable behavior:
+  //   - DAFENG_ENABLE_MLX=OFF  -> stub TU returns null unconditionally.
+  //   - DAFENG_ENABLE_MLX=ON   -> real impl finds /nope doesn't exist
+  //                               and refuses service (returns null).
+  // Either way the daemon's BuildReranker must be able to fall back
+  // without a crash.
   MLXRerankConfig cfg;
-  cfg.model_path = "/nope";
+  cfg.model_path = "/nope-this-path-must-not-exist";
+  auto svc = MakeMLXRerankService(cfg);
+  EXPECT_EQ(svc, nullptr);
+}
+
+TEST(DeterministicRerankerTest, MLXFactoryReturnsNullWithEmptyPath) {
+  MLXRerankConfig cfg;  // model_path == ""
   auto svc = MakeMLXRerankService(cfg);
   EXPECT_EQ(svc, nullptr);
 }

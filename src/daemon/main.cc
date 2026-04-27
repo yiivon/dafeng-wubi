@@ -41,7 +41,28 @@ void PrintUsage() {
                "  --foreground         run in foreground (default)\n"
                "  --addr <path>        socket path / pipe name\n"
                "  --log-level <lvl>    debug | info | warn | error\n"
+               "  --backend <name>     mock | deterministic | mlx\n"
+               "                       (default: deterministic)\n"
+               "  --model-path <path>  MLX model file (used when backend=mlx)\n"
                "  -h, --help           show this help\n");
+}
+
+enum class BackendKind { kMock, kDeterministic, kMLX };
+
+bool ParseBackend(const std::string& s, BackendKind* out) {
+  if (s == "mock") { *out = BackendKind::kMock; return true; }
+  if (s == "deterministic") { *out = BackendKind::kDeterministic; return true; }
+  if (s == "mlx") { *out = BackendKind::kMLX; return true; }
+  return false;
+}
+
+const char* BackendName(BackendKind b) {
+  switch (b) {
+    case BackendKind::kMock: return "mock";
+    case BackendKind::kDeterministic: return "deterministic";
+    case BackendKind::kMLX: return "mlx";
+  }
+  return "?";
 }
 
 bool ParseLogLevel(const std::string& s, dafeng::LogLevel* out) {
@@ -54,9 +75,34 @@ bool ParseLogLevel(const std::string& s, dafeng::LogLevel* out) {
 
 }  // namespace
 
+std::unique_ptr<dafeng::IRerankService> BuildReranker(BackendKind kind,
+                                                      const std::string& model_path) {
+  switch (kind) {
+    case BackendKind::kMock:
+      return dafeng::MakeMockReverseRerankService();
+    case BackendKind::kDeterministic:
+      return dafeng::MakeDeterministicRerankService();
+    case BackendKind::kMLX: {
+      dafeng::MLXRerankConfig cfg;
+      cfg.model_path = model_path;
+      auto svc = dafeng::MakeMLXRerankService(cfg);
+      if (!svc) {
+        DAFENG_LOG_ERROR(
+            "MLX backend not available — was DAFENG_ENABLE_MLX=ON at build "
+            "time? Falling back to deterministic.");
+        return dafeng::MakeDeterministicRerankService();
+      }
+      return svc;
+    }
+  }
+  return dafeng::MakeDeterministicRerankService();
+}
+
 int main(int argc, char** argv) {
   std::string addr = dafeng::GetDaemonAddress();
   dafeng::LogLevel level = dafeng::LogLevel::kInfo;
+  BackendKind backend = BackendKind::kDeterministic;
+  std::string model_path;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -76,6 +122,17 @@ int main(int argc, char** argv) {
       }
       continue;
     }
+    if (a == "--backend" && i + 1 < argc) {
+      if (!ParseBackend(argv[++i], &backend)) {
+        std::fprintf(stderr, "invalid backend: %s\n", argv[i]);
+        return 1;
+      }
+      continue;
+    }
+    if (a == "--model-path" && i + 1 < argc) {
+      model_path = argv[++i];
+      continue;
+    }
     std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
     PrintUsage();
     return 1;
@@ -93,13 +150,15 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  dafeng::Server server(std::move(endpoint),
-                        dafeng::MakeMockReverseRerankService(),
+  auto reranker = BuildReranker(backend, model_path);
+
+  dafeng::Server server(std::move(endpoint), std::move(reranker),
                         dafeng::MakeNullCommitLogger());
   g_server = &server;
   InstallSignalHandlers();
 
-  DAFENG_LOG_INFO("dafeng-daemon ready on %s", addr.c_str());
+  DAFENG_LOG_INFO("dafeng-daemon ready on %s (backend=%s)", addr.c_str(),
+                   BackendName(backend));
   server.Run();
   DAFENG_LOG_INFO("dafeng-daemon exiting");
   g_server = nullptr;
