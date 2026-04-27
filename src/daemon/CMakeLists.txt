@@ -13,6 +13,7 @@ set(DAFENG_DAEMON_SOURCES
   ngram.cc
   new_word.cc
   user_dict.cc
+  learning_round.cc
 )
 
 if(DAFENG_ENABLE_GIT_SYNC)

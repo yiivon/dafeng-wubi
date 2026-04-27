@@ -9,6 +9,7 @@ add_executable(dafeng_unit_tests
   new_word_test.cc
   user_dict_test.cc
   git_sync_test.cc
+  learning_round_test.cc
 )
 
 target_link_libraries(dafeng_unit_tests

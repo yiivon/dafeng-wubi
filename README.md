@@ -2,9 +2,11 @@
 
 A cross-platform, learning, predictive Wubi input method.
 
-> **Status: Phase 2.1 — IPC skeleton complete.** Daemon ↔ IME plumbing
-> ships and is benchmarked. No LLM yet; the reranker is a deterministic
-> mock that reverses the candidate list end-to-end.
+> **Status: Phase 2 complete (2.1 → 2.4).** The full daemon ↔ IME loop ships
+> with a deterministic scored reranker, an MLX swap point, observability,
+> a SQLite history store with privacy guards, n-gram + frequency-based
+> learning, a YAML user-dict generator, and a libgit2 sync skeleton.
+> 132 / 132 tests pass. See [docs/phase-2-summary.md](docs/phase-2-summary.md).
 
 ## Targets
 
@@ -44,17 +46,17 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Phase 2.1 ships **38 tests** across 4 suites:
-- `protocol_test` — wire-format codec round-trip + framing edge cases (14)
-- `endpoint_test` — UDS listen / connect / timeout / shutdown (8)
-- `client_daemon_test` — DafengClient ↔ Server end-to-end (8)
-- `lua_bridge_test` — Lua C bridge against an in-process daemon (7)
-- `IpcPingpongBudget` — P99 < 5 ms gate from DESIGN §3 (1)
+Phase 2 ships **132 tests** across 14 suites — see
+[docs/phase-2-summary.md](docs/phase-2-summary.md) for the full inventory
+and what each suite locks down. Two ctest gates enforce the DESIGN §3
+performance budget (IPC P99 < 5 ms, reranker P99 < 30 ms).
 
 ## Run the daemon
 
 ```bash
 ./build/src/daemon/dafeng-daemon --foreground --log-level info
+# default backend: deterministic (real scored reranker)
+# also: --backend mock | --backend mlx --model-path FILE
 ```
 
 It listens on `~/Library/Application Support/Dafeng/daemon.sock` by
@@ -73,6 +75,11 @@ In another terminal, with the daemon running:
 
 ./build/src/cli/dafeng-cli commit --code wo --text 我 --ctx 今天
 # commit sent (fire-and-forget)
+
+./build/src/cli/dafeng-cli stats
+# rerank model     : deterministic (v1)
+# rerank requests  : 1
+# rerank mean (us) : 3
 ```
 
 ## Benchmark
