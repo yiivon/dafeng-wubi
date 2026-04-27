@@ -62,6 +62,22 @@ class DaemonHarness {
   std::thread thread_;
 };
 
+TEST(IntegrationTest, PingRoundTrip) {
+  DaemonHarness h;
+  DafengClient client(h.sock());
+  EXPECT_TRUE(client.Ping(milliseconds(500)));
+  // Pinging is independent of rerank state; can interleave freely.
+  RerankRequest req;
+  req.candidates = {"a", "b"};
+  ASSERT_TRUE(client.Rerank(req, milliseconds(500)).has_value());
+  EXPECT_TRUE(client.Ping(milliseconds(500)));
+}
+
+TEST(IntegrationTest, PingFailsWhenDaemonAbsent) {
+  DafengClient client("/tmp/dafeng-no-such-ping-target");
+  EXPECT_FALSE(client.Ping(milliseconds(50)));
+}
+
 TEST(IntegrationTest, RerankReturnsReversedPermutation) {
   DaemonHarness h;
   DafengClient client(h.sock());

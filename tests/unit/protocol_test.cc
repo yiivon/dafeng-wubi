@@ -160,5 +160,51 @@ TEST(ProtocolTest, ForwardCompatibilityIgnoresUnknownKeys) {
   EXPECT_EQ(m.request_id, 42u);
 }
 
+TEST(ProtocolTest, FrameLengthRejectsExactlyMaxPlusOne) {
+  uint8_t hdr[4];
+  WriteFrameLength(static_cast<uint32_t>(kMaxFrameBodyBytes + 1), hdr);
+  EXPECT_FALSE(ReadFrameLength(hdr, sizeof(hdr)).has_value());
+}
+
+TEST(ProtocolTest, FrameLengthAcceptsExactlyMax) {
+  uint8_t hdr[4];
+  WriteFrameLength(static_cast<uint32_t>(kMaxFrameBodyBytes), hdr);
+  auto out = ReadFrameLength(hdr, sizeof(hdr));
+  ASSERT_TRUE(out.has_value());
+  EXPECT_EQ(*out, kMaxFrameBodyBytes);
+}
+
+TEST(ProtocolTest, DecodeRejectsBodyOverMax) {
+  // Largest legal body decodes; one byte beyond the cap rejects without
+  // even attempting to allocate.
+  std::vector<uint8_t> oversize(kMaxFrameBodyBytes + 1, 0u);
+  EXPECT_FALSE(DecodeBody(oversize.data(), oversize.size()).has_value());
+}
+
+TEST(ProtocolTest, LargeCandidateListSurvivesRoundTrip) {
+  // 200 candidates of varying length; the rerank API ceiling is ~10 in
+  // practice but the codec should not have a smaller secret limit.
+  RerankRequest req;
+  req.request_id = 999;
+  req.code = "test";
+  for (int i = 0; i < 200; ++i) {
+    req.candidates.push_back("候选-" + std::to_string(i));
+  }
+  auto out = RoundTrip(req);
+  EXPECT_EQ(out.candidates.size(), 200u);
+  EXPECT_EQ(out.candidates.front(), "候选-0");
+  EXPECT_EQ(out.candidates.back(), "候选-199");
+}
+
+TEST(ProtocolTest, MessageVariantEncodeDispatch) {
+  // Encoding through the variant overload must produce the same bytes as
+  // the typed overload — this is the path used by the daemon's reply path.
+  RerankResponse resp;
+  resp.request_id = 5;
+  resp.reordered_indices = {2, 0, 1};
+  Message msg{resp};
+  EXPECT_EQ(EncodeBody(msg), EncodeBody(resp));
+}
+
 }  // namespace
 }  // namespace dafeng
