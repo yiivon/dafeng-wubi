@@ -11,6 +11,7 @@ set(DAFENG_DAEMON_SOURCES
   reranker_deterministic.cc
   history_store.cc
   ngram.cc
+  new_word.cc
 )
 
 if(DAFENG_ENABLE_MLX AND APPLE)

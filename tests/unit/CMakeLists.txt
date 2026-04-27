@@ -6,6 +6,7 @@ add_executable(dafeng_unit_tests
   reranker_deterministic_test.cc
   history_store_test.cc
   ngram_test.cc
+  new_word_test.cc
 )
 
 target_link_libraries(dafeng_unit_tests
