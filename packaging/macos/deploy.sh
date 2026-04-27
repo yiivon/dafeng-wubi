@@ -25,8 +25,9 @@ fi
 PLUGIN_BIN="$REPO_ROOT/$BUILD_DIR/src/plugin/dafeng_lua_bridge.so"
 SCHEMA_SRC="$REPO_ROOT/schemas/wubi.schema.yaml"
 FILTER_SRC="$REPO_ROOT/src/plugin/dafeng_filter.lua"
+RERANK_SRC="$REPO_ROOT/src/plugin/dafeng_rerank.lua"
 
-for f in "$PLUGIN_BIN" "$SCHEMA_SRC" "$FILTER_SRC"; do
+for f in "$PLUGIN_BIN" "$SCHEMA_SRC" "$FILTER_SRC" "$RERANK_SRC"; do
   if [[ ! -f "$f" ]]; then
     echo "[error] missing artifact: $f" >&2
     echo "        Did you build first?  cmake --build $BUILD_DIR" >&2
@@ -39,6 +40,7 @@ mkdir -p "$RIME_DIR/lua"
 # librime-lua looks for Lua scripts under <user>/lua and resolves require()
 # via package.cpath which (in librime-lua's defaults) includes <user>/lua.
 cp -v "$FILTER_SRC" "$RIME_DIR/lua/dafeng_filter.lua"
+cp -v "$RERANK_SRC" "$RIME_DIR/lua/dafeng_rerank.lua"
 cp -v "$PLUGIN_BIN" "$RIME_DIR/lua/dafeng_lua_bridge.so"
 
 # The schema goes at the top of the user dir.

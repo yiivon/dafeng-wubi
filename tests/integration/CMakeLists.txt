@@ -19,6 +19,9 @@ if(APPLE AND DAFENG_BUILD_PLUGIN AND TARGET dafeng::lua_bridge_test)
   add_executable(dafeng_lua_bridge_tests
     lua_bridge_test.cc
   )
+  target_compile_definitions(dafeng_lua_bridge_tests PRIVATE
+    DAFENG_REPO_ROOT="${CMAKE_SOURCE_DIR}"
+  )
   target_link_libraries(dafeng_lua_bridge_tests
     PRIVATE
       dafeng::lua_bridge_test
