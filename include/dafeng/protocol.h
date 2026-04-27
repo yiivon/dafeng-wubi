@@ -24,7 +24,8 @@ inline constexpr size_t kFrameHeaderBytes = 4;
 inline constexpr size_t kMaxFrameBodyBytes = 1u << 20;  // 1 MiB hard cap.
 
 using Message = std::variant<RerankRequest, RerankResponse, CommitEvent,
-                             PingMessage, PongMessage, ErrorMessage>;
+                             PingMessage, PongMessage, ErrorMessage,
+                             StatsRequest, StatsResponse>;
 
 // Body encoders. Caller is responsible for prepending the length prefix
 // (see EncodeFrame) before writing to a stream.
@@ -34,6 +35,8 @@ DAFENG_API std::vector<uint8_t> EncodeBody(const CommitEvent& msg);
 DAFENG_API std::vector<uint8_t> EncodeBody(const PingMessage& msg);
 DAFENG_API std::vector<uint8_t> EncodeBody(const PongMessage& msg);
 DAFENG_API std::vector<uint8_t> EncodeBody(const ErrorMessage& msg);
+DAFENG_API std::vector<uint8_t> EncodeBody(const StatsRequest& msg);
+DAFENG_API std::vector<uint8_t> EncodeBody(const StatsResponse& msg);
 DAFENG_API std::vector<uint8_t> EncodeBody(const Message& msg);
 
 // Returns nullopt on malformed input or on size > kMaxFrameBodyBytes.

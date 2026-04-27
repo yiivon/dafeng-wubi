@@ -32,6 +32,7 @@ void PrintUsage() {
                "  ping                              probe the daemon\n"
                "  rerank --code C [--ctx X] --cands a,b,c [--app id]\n"
                "  commit --code C --text T [--ctx X]\n"
+               "  stats                             dump daemon counters\n"
                "  help                              this message\n"
                "\n"
                "Common options:\n"
@@ -123,6 +124,36 @@ int CmdCommit(const CommonArgs& args, const std::string& code,
   return 0;
 }
 
+int CmdStats(const CommonArgs& args) {
+  dafeng::DafengClient client(args.addr);
+  auto stats = client.GetStats(std::chrono::milliseconds(args.timeout_ms));
+  if (!stats) {
+    std::fprintf(stderr, "stats failed (timeout or daemon unreachable)\n");
+    return 1;
+  }
+  const auto rc = stats->rerank_count;
+  const auto mean_us = rc > 0 ? stats->rerank_latency_sum_us / rc : 0;
+  static const char* const kModelNames[] = {"mock", "deterministic", "mlx"};
+  const char* model_name = stats->rerank_model_version < 3
+                               ? kModelNames[stats->rerank_model_version]
+                               : "unknown";
+  std::printf("daemon uptime    : %llu s\n",
+              (unsigned long long)stats->uptime_sec);
+  std::printf("rerank model     : %s (v%u)\n", model_name,
+              static_cast<unsigned>(stats->rerank_model_version));
+  std::printf("rerank requests  : %llu\n",
+              (unsigned long long)stats->rerank_count);
+  std::printf("ping requests    : %llu\n",
+              (unsigned long long)stats->ping_count);
+  std::printf("commit events    : %llu\n",
+              (unsigned long long)stats->commit_count);
+  std::printf("errors           : %llu\n",
+              (unsigned long long)stats->error_count);
+  std::printf("rerank mean (us) : %llu\n", (unsigned long long)mean_us);
+  std::printf("rerank max  (us) : %u\n", stats->rerank_latency_max_us);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -158,6 +189,7 @@ int main(int argc, char** argv) {
   dafeng::SetLogLevel(dafeng::LogLevel::kWarn);
 
   if (cmd == "ping") return CmdPing(common);
+  if (cmd == "stats") return CmdStats(common);
   if (cmd == "rerank") {
     if (code.empty() || cands.empty()) {
       std::fprintf(stderr, "rerank requires --code and --cands\n");

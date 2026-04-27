@@ -21,6 +21,8 @@ enum class MessageType : uint8_t {
   kPing = 4,
   kPong = 5,
   kError = 6,
+  kStatsRequest = 7,
+  kStatsResponse = 8,
 };
 
 struct RerankRequest {
@@ -60,6 +62,25 @@ struct ErrorMessage {
   uint32_t request_id = 0;
   int32_t code = 0;
   std::string message;
+};
+
+struct StatsRequest {
+  uint32_t request_id = 0;
+};
+
+// Server-side counters. All counters are monotonic since daemon start;
+// the client computes deltas if it wants rates. Sum + max + count gives
+// us a useful (mean, max) pair without per-request histograms.
+struct StatsResponse {
+  uint32_t request_id = 0;
+  uint64_t rerank_count = 0;
+  uint64_t ping_count = 0;
+  uint64_t commit_count = 0;
+  uint64_t error_count = 0;          // malformed / type-mismatch / unknown
+  uint64_t rerank_latency_sum_us = 0;
+  uint32_t rerank_latency_max_us = 0;
+  uint8_t rerank_model_version = 0;  // 0=mock, 1=deterministic, 2=mlx
+  uint64_t uptime_sec = 0;
 };
 
 }  // namespace dafeng

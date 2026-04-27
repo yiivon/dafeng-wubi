@@ -206,5 +206,35 @@ TEST(ProtocolTest, MessageVariantEncodeDispatch) {
   EXPECT_EQ(EncodeBody(msg), EncodeBody(resp));
 }
 
+TEST(ProtocolTest, StatsRequestRoundTrip) {
+  StatsRequest req;
+  req.request_id = 314;
+  auto out = RoundTrip(req);
+  EXPECT_EQ(out.request_id, 314u);
+}
+
+TEST(ProtocolTest, StatsResponseRoundTrip) {
+  StatsResponse s;
+  s.request_id = 42;
+  s.rerank_count = 1000;
+  s.ping_count = 50;
+  s.commit_count = 200;
+  s.error_count = 1;
+  s.rerank_latency_sum_us = 12345;
+  s.rerank_latency_max_us = 99;
+  s.rerank_model_version = 1;
+  s.uptime_sec = 7200;
+  auto out = RoundTrip(s);
+  EXPECT_EQ(out.request_id, 42u);
+  EXPECT_EQ(out.rerank_count, 1000u);
+  EXPECT_EQ(out.ping_count, 50u);
+  EXPECT_EQ(out.commit_count, 200u);
+  EXPECT_EQ(out.error_count, 1u);
+  EXPECT_EQ(out.rerank_latency_sum_us, 12345u);
+  EXPECT_EQ(out.rerank_latency_max_us, 99u);
+  EXPECT_EQ(out.rerank_model_version, 1u);
+  EXPECT_EQ(out.uptime_sec, 7200u);
+}
+
 }  // namespace
 }  // namespace dafeng

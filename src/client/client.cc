@@ -83,6 +83,47 @@ class DafengClient::Impl {
     return *resp;
   }
 
+  std::optional<StatsResponse> GetStats(milliseconds timeout) {
+    const auto deadline = steady_clock::now() + timeout;
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!EnsureConnectedLocked()) return std::nullopt;
+
+    StatsRequest req;
+    req.request_id = next_request_id_.fetch_add(1);
+    const auto frame = EncodeFrame(EncodeBody(req));
+    if (!conn_->WriteAll(frame.data(), frame.size(), Remaining(deadline))) {
+      ResetLocked();
+      return std::nullopt;
+    }
+
+    uint8_t header[kFrameHeaderBytes];
+    if (!conn_->ReadFull(header, sizeof(header), Remaining(deadline))) {
+      ResetLocked();
+      return std::nullopt;
+    }
+    const auto body_len = ReadFrameLength(header, sizeof(header));
+    if (!body_len) {
+      ResetLocked();
+      return std::nullopt;
+    }
+    std::vector<uint8_t> body(*body_len);
+    if (!conn_->ReadFull(body.data(), body.size(), Remaining(deadline))) {
+      ResetLocked();
+      return std::nullopt;
+    }
+    auto msg = DecodeBody(body.data(), body.size());
+    if (!msg) {
+      ResetLocked();
+      return std::nullopt;
+    }
+    auto* resp = std::get_if<StatsResponse>(&*msg);
+    if (resp == nullptr || resp->request_id != req.request_id) {
+      ResetLocked();
+      return std::nullopt;
+    }
+    return *resp;
+  }
+
   bool Ping(milliseconds timeout) {
     const auto deadline = steady_clock::now() + timeout;
     std::lock_guard<std::mutex> lock(mu_);
@@ -190,6 +231,10 @@ std::optional<RerankResponse> DafengClient::Rerank(const RerankRequest& req,
 }
 
 bool DafengClient::Ping(milliseconds timeout) { return impl_->Ping(timeout); }
+
+std::optional<StatsResponse> DafengClient::GetStats(milliseconds timeout) {
+  return impl_->GetStats(timeout);
+}
 
 void DafengClient::RecordCommit(const std::string& code,
                                  const std::string& committed_text,

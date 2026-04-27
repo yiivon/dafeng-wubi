@@ -44,6 +44,10 @@ class DAFENG_API DafengClient {
   // Useful for self-tests / benchmarks; not part of the IME hot path.
   bool Ping(std::chrono::milliseconds timeout);
 
+  // Snapshot the daemon's monotonic counters. Returns nullopt on failure.
+  // Tools-only — not called from the filter.
+  std::optional<StatsResponse> GetStats(std::chrono::milliseconds timeout);
+
   // Cold path. Never blocks on a response.
   void RecordCommit(const std::string& code,
                     const std::string& committed_text,

@@ -189,6 +189,46 @@ TEST(IntegrationTest, ClientReturnsNulloptAfterReset) {
   EXPECT_FALSE(client.Rerank(req, milliseconds(50)).has_value());
 }
 
+TEST(IntegrationTest, StatsReflectActualOperations) {
+  DaemonHarness h;
+  DafengClient client(h.sock());
+
+  auto baseline = client.GetStats(milliseconds(500));
+  ASSERT_TRUE(baseline.has_value());
+  // baseline.rerank_count is whatever the harness's earlier setup did
+  // (it's currently nothing, but be robust to harness changes).
+
+  // Drive 5 reranks, 3 pings, 2 commits.
+  RerankRequest req;
+  req.candidates = {"a", "b", "c"};
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_TRUE(client.Rerank(req, milliseconds(500)).has_value());
+  }
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_TRUE(client.Ping(milliseconds(500)));
+  }
+  for (int i = 0; i < 2; ++i) {
+    client.RecordCommit("c", "x", "y");
+  }
+  // Give the fire-and-forget commit a moment to land on the server side.
+  std::this_thread::sleep_for(milliseconds(20));
+
+  auto after = client.GetStats(milliseconds(500));
+  ASSERT_TRUE(after.has_value());
+  EXPECT_GE(after->rerank_count - baseline->rerank_count, 5u);
+  // +1 for the GetStats call we just made; +3 for explicit Ping; the stats
+  // request itself is NOT counted as a ping.
+  EXPECT_EQ(after->ping_count - baseline->ping_count, 3u);
+  EXPECT_EQ(after->commit_count - baseline->commit_count, 2u);
+  EXPECT_GE(after->uptime_sec, baseline->uptime_sec);  // monotonic
+  EXPECT_EQ(after->rerank_model_version, 0u);  // harness uses mock-reverse
+}
+
+TEST(IntegrationTest, GetStatsFailsWhenDaemonAbsent) {
+  DafengClient client("/tmp/dafeng-no-such-stats-target");
+  EXPECT_FALSE(client.GetStats(milliseconds(50)).has_value());
+}
+
 TEST(IntegrationTest, ConcurrentClientsAreSerializedSafely) {
   DaemonHarness h;
   // Two clients hammering the server in parallel — proves the server can

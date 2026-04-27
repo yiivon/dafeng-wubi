@@ -24,6 +24,14 @@ constexpr const char* kKeyModelVersion = "mver";
 constexpr const char* kKeyText = "text";
 constexpr const char* kKeyErrCode = "ec";
 constexpr const char* kKeyErrMsg = "em";
+constexpr const char* kKeyRerankCount = "rc";
+constexpr const char* kKeyPingCount = "pc";
+constexpr const char* kKeyCommitCount = "cc";
+constexpr const char* kKeyErrorCount = "ec_total";
+constexpr const char* kKeyRerankLatSum = "rls";
+constexpr const char* kKeyRerankLatMax = "rlmax";
+constexpr const char* kKeyRerankModelVer = "rmv";
+constexpr const char* kKeyUptimeSec = "ut";
 
 template <typename Packer>
 void PackKey(Packer& pk, const char* key) {
@@ -156,6 +164,32 @@ std::vector<uint8_t> EncodeBody(const ErrorMessage& msg) {
   return SbufToVec(sbuf);
 }
 
+std::vector<uint8_t> EncodeBody(const StatsRequest& msg) {
+  msgpack::sbuffer sbuf;
+  msgpack::packer<msgpack::sbuffer> pk(&sbuf);
+  pk.pack_map(3);
+  PackHeader(pk, MessageType::kStatsRequest);
+  PackKey(pk, kKeyId); pk.pack(msg.request_id);
+  return SbufToVec(sbuf);
+}
+
+std::vector<uint8_t> EncodeBody(const StatsResponse& msg) {
+  msgpack::sbuffer sbuf;
+  msgpack::packer<msgpack::sbuffer> pk(&sbuf);
+  pk.pack_map(11);
+  PackHeader(pk, MessageType::kStatsResponse);
+  PackKey(pk, kKeyId); pk.pack(msg.request_id);
+  PackKey(pk, kKeyRerankCount); pk.pack(msg.rerank_count);
+  PackKey(pk, kKeyPingCount); pk.pack(msg.ping_count);
+  PackKey(pk, kKeyCommitCount); pk.pack(msg.commit_count);
+  PackKey(pk, kKeyErrorCount); pk.pack(msg.error_count);
+  PackKey(pk, kKeyRerankLatSum); pk.pack(msg.rerank_latency_sum_us);
+  PackKey(pk, kKeyRerankLatMax); pk.pack(msg.rerank_latency_max_us);
+  PackKey(pk, kKeyRerankModelVer); pk.pack(msg.rerank_model_version);
+  PackKey(pk, kKeyUptimeSec); pk.pack(msg.uptime_sec);
+  return SbufToVec(sbuf);
+}
+
 std::vector<uint8_t> EncodeBody(const Message& msg) {
   return std::visit([](const auto& m) { return EncodeBody(m); }, msg);
 }
@@ -219,6 +253,24 @@ std::optional<Message> DecodeBody(const uint8_t* data, size_t size) {
       MapGet(obj, kKeyId, m.request_id);
       MapGet(obj, kKeyErrCode, m.code);
       MapGet(obj, kKeyErrMsg, m.message);
+      return Message{std::move(m)};
+    }
+    case MessageType::kStatsRequest: {
+      StatsRequest m;
+      MapGet(obj, kKeyId, m.request_id);
+      return Message{std::move(m)};
+    }
+    case MessageType::kStatsResponse: {
+      StatsResponse m;
+      MapGet(obj, kKeyId, m.request_id);
+      MapGet(obj, kKeyRerankCount, m.rerank_count);
+      MapGet(obj, kKeyPingCount, m.ping_count);
+      MapGet(obj, kKeyCommitCount, m.commit_count);
+      MapGet(obj, kKeyErrorCount, m.error_count);
+      MapGet(obj, kKeyRerankLatSum, m.rerank_latency_sum_us);
+      MapGet(obj, kKeyRerankLatMax, m.rerank_latency_max_us);
+      MapGet(obj, kKeyRerankModelVer, m.rerank_model_version);
+      MapGet(obj, kKeyUptimeSec, m.uptime_sec);
       return Message{std::move(m)};
     }
     case MessageType::kInvalid:
