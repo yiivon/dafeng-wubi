@@ -12,6 +12,7 @@ set(DAFENG_DAEMON_SOURCES
   history_store.cc
   ngram.cc
   new_word.cc
+  user_dict.cc
 )
 
 if(DAFENG_ENABLE_MLX AND APPLE)
