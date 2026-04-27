@@ -1,0 +1,60 @@
+# Build outputs
+build/
+build-*/
+out/
+cmake-build-*/
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+compile_commands.json
+Testing/
+
+# Compiler outputs
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.pdb
+*.ilk
+*.exp
+
+# OS junk
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.swp
+*.swo
+
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+*.user
+*.suo
+
+# Python (tooling)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs / runtime artifacts (privacy boundary)
+*.log
+logs/
+history.db
+history.db-*
+*.sock
+
+# Local user overrides
+.env
+.env.local
