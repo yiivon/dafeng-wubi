@@ -24,5 +24,6 @@ else()
     -Wnon-virtual-dtor
   )
   # The librime plugin matches librime's own -fno-rtti via its own target;
-  # the daemon and client don't need it.
+  # the daemon and client don't need it. Objective-C ARC is applied to .mm
+  # files only — set on a per-target basis when needed.
 endif()

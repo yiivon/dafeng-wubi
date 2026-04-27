@@ -1,8 +1,25 @@
 # dafeng_common — shared types, protocol codec, IPC primitives, logging.
 
-add_library(dafeng_common STATIC
+set(DAFENG_COMMON_SOURCES
   protocol.cc
+  logging.cc
 )
+
+if(APPLE OR (UNIX AND NOT WIN32))
+  list(APPEND DAFENG_COMMON_SOURCES
+    endpoint_unix.cc
+    paths_mac.cc
+  )
+elseif(WIN32)
+  list(APPEND DAFENG_COMMON_SOURCES
+    endpoint_win.cc
+    paths_win.cc
+  )
+else()
+  message(FATAL_ERROR "Unsupported platform for dafeng_common")
+endif()
+
+add_library(dafeng_common STATIC ${DAFENG_COMMON_SOURCES})
 
 target_include_directories(dafeng_common
   PUBLIC

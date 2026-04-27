@@ -1,5 +1,6 @@
 add_executable(dafeng_unit_tests
   protocol_test.cc
+  endpoint_test.cc
 )
 
 target_link_libraries(dafeng_unit_tests
