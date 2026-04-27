@@ -33,11 +33,30 @@ class ICommitLogger {
 
 // Phase 2.1: a deterministic mock that reverses the candidate list. Used
 // to prove the IPC pipeline is working end to end without paying for an
-// actual model. Replaced by MakeMLXRerankService / MakeLlamaCppRerankService
-// in Phase 2.2.
+// actual model.
 std::unique_ptr<IRerankService> MakeMockReverseRerankService();
 
-// Phase 2.1: a no-op commit logger. Real impl in Phase 2.4 with SQLite.
+// Phase 2.2: deterministic, scored reranker. Uses a small hand-curated
+// bigram table + length / context heuristics. Not LLM-quality, but
+// behaviorally meaningful (output depends on context, scores are real)
+// and trivially testable. Suitable as the default backend until MLX is
+// configured. model_version field is set to 1.
+std::unique_ptr<IRerankService> MakeDeterministicRerankService();
+
+// Phase 2.2: MLX-backed reranker. Returns nullptr if MLX is unavailable
+// at build time; the daemon must fall back to a different backend in
+// that case. Returns a service that fails IsReady() until the model is
+// loaded successfully.
+struct MLXRerankConfig {
+  std::string model_path;       // path to MLX .npz / .safetensors
+  uint32_t timeout_ms = 30;     // per-call deadline
+  uint32_t warmup_iterations = 1;
+};
+std::unique_ptr<IRerankService> MakeMLXRerankService(
+    const MLXRerankConfig& config);
+
+// Phase 2.1: a no-op commit logger. Real impl (SQLite-backed) lands in
+// Phase 2.4 as MakeSqliteCommitLogger.
 std::unique_ptr<ICommitLogger> MakeNullCommitLogger();
 
 }  // namespace dafeng

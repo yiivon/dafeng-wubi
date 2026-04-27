@@ -5,10 +5,19 @@
 # Daemon split into a library + thin executable so tests can drive the
 # server in-process.
 
-add_library(dafeng_daemon_core STATIC
+set(DAFENG_DAEMON_SOURCES
   server.cc
   mock_reranker.cc
+  reranker_deterministic.cc
 )
+
+if(DAFENG_ENABLE_MLX AND APPLE)
+  list(APPEND DAFENG_DAEMON_SOURCES reranker_mlx.cc)
+else()
+  list(APPEND DAFENG_DAEMON_SOURCES reranker_mlx_stub.cc)
+endif()
+
+add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
 
 target_include_directories(dafeng_daemon_core
   PUBLIC

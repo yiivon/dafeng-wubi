@@ -3,6 +3,7 @@ add_executable(dafeng_unit_tests
   endpoint_test.cc
   mock_reranker_test.cc
   logging_test.cc
+  reranker_deterministic_test.cc
 )
 
 target_link_libraries(dafeng_unit_tests
