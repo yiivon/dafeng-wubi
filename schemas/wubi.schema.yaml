@@ -1,0 +1,84 @@
+# Dafeng-augmented Wubi 86 schema. Drops in alongside RIME's standard
+# wubi86 dictionary — installed via plum or whatever the user already has.
+# See DESIGN.md appendix B for the full configuration surface.
+
+schema:
+  schema_id: wubi86_dafeng
+  name: 大风五笔 86
+  version: "0.1"
+  author:
+    - Kevin
+  description: |
+    五笔 86 + 本地 LLM 智能重排。LLM 超时 30ms 安静降级到原始候选,
+    保留盲打肌肉记忆。详见项目 README。
+
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [ 中文, 西文 ]
+  - name: full_shape
+    states: [ 半角, 全角 ]
+  - name: simplification
+    states: [ 漢字, 汉字 ]
+    reset: 1
+  - name: dafeng_smart
+    reset: 1
+    states: [ 单纯五笔, 智能五笔 ]
+
+engine:
+  processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - table_translator
+  filters:
+    - simplifier
+    - uniquifier
+    - lua_filter@*dafeng_filter@dafeng_options
+
+dafeng_options:
+  enabled: true
+  timeout_ms: 30
+  max_candidates_to_rerank: 10
+  context_chars: 20
+  fallback_silent: true
+  protect_user_high_freq: true
+  protect_top_n: 3
+
+translator:
+  dictionary: wubi86
+  enable_charset_filter: true
+  enable_completion: true
+  enable_sentence: true
+  preedit_format:
+    - "xform/(^.+$)/$1 /"
+
+speller:
+  alphabet: 'zyxwvutsrqponmlkjihgfedcba'
+  delimiter: " '"
+  algebra:
+    - "abbrev/^(.).+$/$1/"
+
+punctuator:
+  import_preset: default
+
+key_binder:
+  import_preset: default
+
+recognizer:
+  import_preset: default
+  patterns:
+    punct: '^/[a-z]+$'
