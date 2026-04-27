@@ -28,6 +28,8 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 include(DafengCompilerFlags)
 
+find_package(Threads REQUIRED)
+
 # ---- Options ------------------------------------------------------------------
 
 option(DAFENG_BUILD_TESTS     "Build unit and integration tests"      ON)
