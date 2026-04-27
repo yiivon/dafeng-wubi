@@ -2,20 +2,36 @@
 # server, signal handling, and a deterministic mock reranker. MLX /
 # llama.cpp / SQLite / libgit2 land in later phases through services.h.
 
-add_executable(dafeng-daemon
-  main.cc
+# Daemon split into a library + thin executable so tests can drive the
+# server in-process.
+
+add_library(dafeng_daemon_core STATIC
   server.cc
   mock_reranker.cc
 )
 
-target_include_directories(dafeng-daemon
-  PRIVATE
+target_include_directories(dafeng_daemon_core
+  PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+target_link_libraries(dafeng_daemon_core
+  PUBLIC
+    dafeng::common
+  PRIVATE
+    dafeng::compiler_flags
+    Threads::Threads
+)
+
+add_library(dafeng::daemon_core ALIAS dafeng_daemon_core)
+
+add_executable(dafeng-daemon
+  main.cc
 )
 
 target_link_libraries(dafeng-daemon
   PRIVATE
-    dafeng::common
+    dafeng::daemon_core
     dafeng::compiler_flags
     Threads::Threads
 )
