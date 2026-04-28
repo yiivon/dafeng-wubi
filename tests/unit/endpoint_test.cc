@@ -2,8 +2,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -11,29 +13,57 @@
 
 #include "dafeng/paths.h"
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 namespace dafeng {
 namespace {
 
 using std::chrono::milliseconds;
 
-std::string MakeTempSocketPath() {
-  // mkstemp gives us a unique name; we delete it and use the path for the
-  // socket. The test uses a short path to stay under sun_path's 104 chars.
-  char tmpl[] = "/tmp/dafeng-endpoint-test-XXXXXX";
-  int fd = ::mkstemp(tmpl);
-  if (fd >= 0) ::close(fd);
-  ::unlink(tmpl);
-  return tmpl;
+void SetTestEnv(const char* key, const char* value) {
+#if defined(_WIN32)
+  ::_putenv_s(key, value);
+#else
+  ::setenv(key, value, 1);
+#endif
+}
+
+void UnsetTestEnv(const char* key) {
+#if defined(_WIN32)
+  ::_putenv_s(key, "");
+#else
+  ::unsetenv(key);
+#endif
+}
+
+// Platform-appropriate, unique endpoint address for a single test.
+// macOS: short UDS path under /tmp (sun_path is capped at 104 chars).
+// Windows: a `\\.\pipe\…` name, which can be up to 256 chars but we keep
+// it short for clarity.
+std::string MakeTempEndpoint() {
+  std::random_device rd;
+  std::uniform_int_distribution<uint32_t> dist;
+  char buf[64];
+#if defined(_WIN32)
+  std::snprintf(buf, sizeof(buf), "\\\\.\\pipe\\dafeng-test-%08x", dist(rd));
+#else
+  std::snprintf(buf, sizeof(buf), "/tmp/dafeng-endpoint-test-%08x.sock",
+                dist(rd));
+  ::unlink(buf);  // ensure clean slate for the bind
+#endif
+  return buf;
 }
 
 TEST(EndpointTest, ConnectFailsWhenNoServer) {
-  auto path = MakeTempSocketPath();
+  auto path = MakeTempEndpoint();
   auto conn = ConnectEndpoint(path);
   EXPECT_EQ(conn, nullptr);
 }
 
 TEST(EndpointTest, ListenAndConnect) {
-  auto path = MakeTempSocketPath();
+  auto path = MakeTempEndpoint();
   auto server = ListenEndpoint(path);
   ASSERT_NE(server, nullptr);
 
@@ -54,7 +84,7 @@ TEST(EndpointTest, ListenAndConnect) {
 }
 
 TEST(EndpointTest, RoundTripBytes) {
-  auto path = MakeTempSocketPath();
+  auto path = MakeTempEndpoint();
   auto server = ListenEndpoint(path);
   ASSERT_NE(server, nullptr);
 
@@ -84,7 +114,7 @@ TEST(EndpointTest, RoundTripBytes) {
 }
 
 TEST(EndpointTest, ReadFullTimesOut) {
-  auto path = MakeTempSocketPath();
+  auto path = MakeTempEndpoint();
   auto server = ListenEndpoint(path);
   ASSERT_NE(server, nullptr);
 
@@ -112,7 +142,7 @@ TEST(EndpointTest, ReadFullTimesOut) {
 }
 
 TEST(EndpointTest, ShutdownUnblocksAccept) {
-  auto path = MakeTempSocketPath();
+  auto path = MakeTempEndpoint();
   auto server = ListenEndpoint(path);
   ASSERT_NE(server, nullptr);
 
@@ -131,23 +161,48 @@ TEST(EndpointTest, ShutdownUnblocksAccept) {
 }
 
 TEST(PathsTest, DataDirRespectsOverride) {
-  ::setenv("DAFENG_DATA_DIR", "/tmp/dafeng-test-override", 1);
-  EXPECT_EQ(GetDataDir(), std::filesystem::path("/tmp/dafeng-test-override"));
-  ::unsetenv("DAFENG_DATA_DIR");
+#if defined(_WIN32)
+  const char* kOverride = "C:\\dafeng-test-override";
+#else
+  const char* kOverride = "/tmp/dafeng-test-override";
+#endif
+  SetTestEnv("DAFENG_DATA_DIR", kOverride);
+  EXPECT_EQ(GetDataDir(), std::filesystem::path(kOverride));
+  UnsetTestEnv("DAFENG_DATA_DIR");
 }
 
 TEST(PathsTest, DaemonAddressRespectsOverride) {
-  ::setenv("DAFENG_DAEMON_ADDR", "/tmp/foo.sock", 1);
-  EXPECT_EQ(GetDaemonAddress(), "/tmp/foo.sock");
-  ::unsetenv("DAFENG_DAEMON_ADDR");
+#if defined(_WIN32)
+  const char* kOverride = "\\\\.\\pipe\\dafeng-test-foo";
+#else
+  const char* kOverride = "/tmp/foo.sock";
+#endif
+  SetTestEnv("DAFENG_DAEMON_ADDR", kOverride);
+  EXPECT_EQ(GetDaemonAddress(), kOverride);
+  UnsetTestEnv("DAFENG_DAEMON_ADDR");
 }
 
+#if !defined(_WIN32)
+// Mac/Unix only: the default daemon address is `<datadir>/daemon.sock`,
+// derived from GetDataDir(). On Windows the default is a per-user pipe
+// name `\\.\pipe\dafeng-daemon-<user>` and isn't a function of DataDir,
+// so the equivalence doesn't hold.
 TEST(PathsTest, DefaultDaemonAddressIsUnderDataDir) {
-  ::unsetenv("DAFENG_DAEMON_ADDR");
-  ::setenv("DAFENG_DATA_DIR", "/tmp/dafeng-test-default", 1);
+  UnsetTestEnv("DAFENG_DAEMON_ADDR");
+  SetTestEnv("DAFENG_DATA_DIR", "/tmp/dafeng-test-default");
   EXPECT_EQ(GetDaemonAddress(), "/tmp/dafeng-test-default/daemon.sock");
-  ::unsetenv("DAFENG_DATA_DIR");
+  UnsetTestEnv("DAFENG_DATA_DIR");
 }
+#else
+// Windows: default address has the per-user pipe form.
+TEST(PathsTest, DefaultDaemonAddressIsPerUserPipe) {
+  UnsetTestEnv("DAFENG_DAEMON_ADDR");
+  const auto addr = GetDaemonAddress();
+  EXPECT_EQ(addr.find("\\\\.\\pipe\\dafeng-daemon-"), 0u);
+  // Suffix must be at least one sanitized char.
+  EXPECT_GT(addr.size(), std::string("\\\\.\\pipe\\dafeng-daemon-").size());
+}
+#endif
 
 }  // namespace
 }  // namespace dafeng

@@ -35,4 +35,10 @@ target_link_libraries(dafeng_common
     dafeng::msgpack
 )
 
+if(WIN32)
+  # SHGetKnownFolderPath (shell32, ole32 for CoTaskMemFree),
+  # GetUserNameW (advapi32). kernel32 (CreateNamedPipeW etc.) is implicit.
+  target_link_libraries(dafeng_common PRIVATE shell32 ole32 advapi32)
+endif()
+
 add_library(dafeng::common ALIAS dafeng_common)

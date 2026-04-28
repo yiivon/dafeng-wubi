@@ -16,10 +16,37 @@
 #include "server.h"
 #include "services.h"
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace {
 
 dafeng::Server* g_server = nullptr;
 
+#if defined(_WIN32)
+// Windows uses a Console Control Handler instead of POSIX signals.
+// Returning TRUE tells the system "we handled it" so the default
+// terminate behavior is suppressed; the server's shutdown event then
+// drives a clean exit.
+BOOL WINAPI HandleConsoleCtrl(DWORD ctrl_type) {
+  switch (ctrl_type) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+      if (g_server != nullptr) g_server->Shutdown();
+      return TRUE;
+  }
+  return FALSE;
+}
+
+void InstallSignalHandlers() {
+  ::SetConsoleCtrlHandler(HandleConsoleCtrl, TRUE);
+}
+#else
 void HandleSignal(int /*sig*/) {
   // Async-signal-safe: only writes a byte through a pipe.
   if (g_server != nullptr) g_server->Shutdown();
@@ -35,6 +62,7 @@ void InstallSignalHandlers() {
   sigaction(SIGTERM, &sa, nullptr);
   std::signal(SIGPIPE, SIG_IGN);  // we already check write() return values
 }
+#endif
 
 void PrintUsage() {
   std::fprintf(stderr,

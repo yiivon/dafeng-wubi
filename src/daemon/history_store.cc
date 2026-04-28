@@ -6,7 +6,13 @@
 #include <utility>
 
 #include <sqlite3.h>
+
+#if defined(_WIN32)
+// Windows ACL inheritance under %APPDATA% is owner-only by default; we
+// rely on that and skip the explicit chmod step below.
+#else
 #include <sys/stat.h>
+#endif
 
 #include "dafeng/logging.h"
 
@@ -212,9 +218,12 @@ std::unique_ptr<IHistoryStore> MakeSqliteHistoryStore(
     return nullptr;
   }
 
+#if !defined(_WIN32)
   // Enforce file mode 0600 — owner read/write only. SQLite respects umask
-  // but this is the explicit version.
+  // but this is the explicit version. On Windows, ACL inheritance from
+  // %APPDATA%/Dafeng/ already restricts the file to the current user.
   ::chmod(db_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
 
   if (!ApplySchema(db)) {
     sqlite3_close_v2(db);

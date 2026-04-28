@@ -77,6 +77,52 @@ jobs:
       - name: Test (MLX-on build path)
         run: ctest --test-dir build-mlx --output-on-failure
 
+  windows-build-test:
+    # Phase 3.3 — compile-check the Windows port. The Lua plugin (needs
+    # Weasel / librime headers) and libgit2/MLX/llama.cpp are off here;
+    # only the daemon, CLI, and core tests run. As the port matures we
+    # turn these on one by one.
+    name: Windows · build + test (compile-check)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install deps via vcpkg
+        shell: pwsh
+        # windows-latest pre-installs vcpkg at $env:VCPKG_INSTALLATION_ROOT.
+        # We only need sqlite3 right now (history.db). libgit2 follows when
+        # we wire DAFENG_ENABLE_GIT_SYNC for Windows.
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install sqlite3:x64-windows
+
+      - name: Configure (MSVC, daemon + CLI + tests)
+        shell: pwsh
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+                -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+                -DVCPKG_TARGET_TRIPLET=x64-windows `
+                -DDAFENG_ENABLE_GIT_SYNC=OFF `
+                -DDAFENG_ENABLE_MLX=OFF `
+                -DDAFENG_ENABLE_LLAMA_CPP=OFF `
+                -DDAFENG_BUILD_PLUGIN=OFF
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config RelWithDebInfo -j
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-logs-windows
+          path: build/Testing/Temporary/
+
   shellcheck:
     name: shellcheck install.sh + packaging scripts
     runs-on: ubuntu-latest

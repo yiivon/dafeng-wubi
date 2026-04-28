@@ -144,8 +144,12 @@ ctest                    : 144 / 144 pass in 1.7 s
 - 🚧 **Phase 3.2(下一站)** —— 真 LLM:把 Qwen 2.5 0.5B 的 transformer
   forward pass 接进 MLX backend。目前 `--backend mlx` 已通,只是 scoring 还
   delegate 到 deterministic。
-- 📋 **Phase 3.3** —— Windows port(`endpoint_win.cc` / `paths_win.cc` 真实
-  实现 + Named Pipe 后端 + 服务自启)。
+- 🚧 **Phase 3.3 进行中** —— Windows port 框架已落地:[endpoint_win.cc](src/common/endpoint_win.cc)
+  真实 Named Pipe(OVERLAPPED I/O + 超时 + 跨线程 shutdown);
+  [paths_win.cc](src/common/paths_win.cc) 真实 `SHGetKnownFolderPath` +
+  per-user pipe 命名;daemon main `SetConsoleCtrlHandler`。
+  CI (`windows-latest`) 已加,编译验证通过。还差:Weasel 集成、NSIS
+  安装包、Scheduled Task 自启、端到端真机回归。详见 [docs/phase-3.3.md](docs/phase-3.3.md)。
 - 📋 **Phase 3.4** —— GUI 监控/编辑面板(SwiftUI)。
 
 ## 贡献
