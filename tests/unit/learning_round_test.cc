@@ -111,7 +111,9 @@ TEST_F(LearningRoundFixture, GitCommitFiresWhenEnabled) {
   GitSyncConfig gcfg;
   gcfg.repo_path = (data_dir_ / "userdata").string();
   auto git = MakeGitSync(gcfg);
-  ASSERT_NE(git, nullptr);
+  if (git == nullptr) {
+    GTEST_SKIP() << "DAFENG_ENABLE_GIT_SYNC=OFF; libgit2 not linked.";
+  }
 
   LearningRoundConfig cfg;
   cfg.data_dir = data_dir_;

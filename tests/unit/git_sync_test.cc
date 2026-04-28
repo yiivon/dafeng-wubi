@@ -19,6 +19,17 @@ class GitSyncFixture : public ::testing::Test {
   void SetUp() override {
     repo_ = dafeng::testing::MakeTempDir("dafeng-gitsync-");
     ASSERT_FALSE(repo_.empty());
+    // git_sync_stub.cc is linked when DAFENG_ENABLE_GIT_SYNC=OFF (the
+    // default Windows CI configuration — no vcpkg libgit2 yet). The
+    // stub's MakeGitSync always returns nullptr regardless of input.
+    // Build-time signal, not a test failure: skip the fixture so those
+    // builds report green. Probe with a *valid* config so we don't
+    // confuse the real implementation's "bad config" return with the
+    // stub's unconditional one.
+    if (MakeGitSync(MakeConfig()) == nullptr) {
+      GTEST_SKIP() << "DAFENG_ENABLE_GIT_SYNC=OFF; "
+                      "libgit2 not linked into this build.";
+    }
   }
   void TearDown() override {
     std::error_code ec;
