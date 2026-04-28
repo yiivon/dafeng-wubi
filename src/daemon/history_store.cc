@@ -197,7 +197,7 @@ std::unique_ptr<IHistoryStore> MakeSqliteHistoryStore(
     DAFENG_LOG_ERROR(
         "history: refusing to open %s — not under data root %s. This is the "
         "CLAUDE.md privacy boundary.",
-        db_path.c_str(), data_root.c_str());
+        db_path.string().c_str(), data_root.string().c_str());
     return nullptr;
   }
 
@@ -211,7 +211,12 @@ std::unique_ptr<IHistoryStore> MakeSqliteHistoryStore(
   sqlite3* db = nullptr;
   const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
                      SQLITE_OPEN_FULLMUTEX;
-  if (sqlite3_open_v2(db_path.c_str(), &db, flags, nullptr) != SQLITE_OK) {
+  // SQLite documents path strings as UTF-8. On Windows, path::c_str() is
+  // wchar_t* and path::string() is in the active code page; only u8string()
+  // gives us UTF-8. On POSIX u8string() is just the native bytes (already
+  // UTF-8 on macOS/Linux), so the same call works cross-platform.
+  const std::string db_path_utf8 = db_path.u8string();
+  if (sqlite3_open_v2(db_path_utf8.c_str(), &db, flags, nullptr) != SQLITE_OK) {
     DAFENG_LOG_ERROR("history: open failed: %s",
                        db ? sqlite3_errmsg(db) : "(null)");
     if (db != nullptr) sqlite3_close_v2(db);
@@ -222,7 +227,7 @@ std::unique_ptr<IHistoryStore> MakeSqliteHistoryStore(
   // Enforce file mode 0600 — owner read/write only. SQLite respects umask
   // but this is the explicit version. On Windows, ACL inheritance from
   // %APPDATA%/Dafeng/ already restricts the file to the current user.
-  ::chmod(db_path.c_str(), S_IRUSR | S_IWUSR);
+  ::chmod(db_path_utf8.c_str(), S_IRUSR | S_IWUSR);
 #endif
 
   if (!ApplySchema(db)) {

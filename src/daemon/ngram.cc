@@ -130,13 +130,13 @@ class NgramTable final : public INgramTable {
     char magic[sizeof(kMagic)];
     if (!f.read(magic, sizeof(kMagic)) ||
         std::memcmp(magic, kMagic, sizeof(kMagic)) != 0) {
-      DAFENG_LOG_WARN("ngram: bad magic in %s", path.c_str());
+      DAFENG_LOG_WARN("ngram: bad magic in %s", path.string().c_str());
       return false;
     }
     uint32_t version = 0;
     if (!Read32(f, &version) || version != kVersion) {
       DAFENG_LOG_WARN("ngram: unsupported version %u in %s", version,
-                       path.c_str());
+                       path.string().c_str());
       return false;
     }
     uint32_t pair_count = 0;
