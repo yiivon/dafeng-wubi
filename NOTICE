@@ -1,0 +1,31 @@
+大风五笔 (dafeng-wubi)
+Copyright 2026 Kevin and dafeng-wubi contributors
+
+This product includes software developed by third parties:
+
+- msgpack-c (Boost Software License 1.0)
+  https://github.com/msgpack/msgpack-c
+
+- Lua 5.4 (MIT, vendored at build time via FetchContent)
+  https://www.lua.org
+
+- GoogleTest (BSD 3-Clause, test-only)
+  https://github.com/google/googletest
+
+- MLX / mlx-c (MIT, optional runtime dependency)
+  https://github.com/ml-explore/mlx
+  https://github.com/ml-explore/mlx-c
+
+- SQLite (Public Domain, system runtime dependency)
+  https://www.sqlite.org
+
+- libgit2 (GPL-2.0-only with linking exception, dynamic runtime dependency)
+  https://libgit2.org
+
+- librime / Squirrel (BSD-3-Clause, runtime peer; we communicate via
+  shared files and the librime-lua plugin, never link statically)
+  https://rime.im
+
+The reranker is designed to consume models in the Qwen 2.5 family
+(Apache-2.0). Model weights are not redistributed by this project; users
+fetch them via tools/download_model.py.

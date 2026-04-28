@@ -32,7 +32,7 @@ endif()
 add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
 
 find_package(SQLite3 REQUIRED)
-target_link_libraries(dafeng_daemon_core PRIVATE SQLite::SQLite3)
+target_link_libraries(dafeng_daemon_core PRIVATE SQLite3::SQLite3)
 
 if(DAFENG_ENABLE_GIT_SYNC)
   find_path(GIT2_INCLUDE_DIR git2.h HINTS /opt/homebrew/include /usr/local/include)

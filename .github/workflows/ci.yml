@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel previous runs of the same branch when a new push lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-build-test:
+    name: macOS · build + test
+    runs-on: macos-14  # Sonoma; closest to project's required-min macOS 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools (brew)
+        run: |
+          brew update
+          brew install --quiet cmake ninja libgit2 mlx-c
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DDAFENG_ENABLE_GIT_SYNC=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Benchmarks (informational)
+        run: |
+          ./build/tests/benchmarks/ipc_pingpong --iterations 5000 \
+            --p99-budget-us 5000
+          ./build/tests/benchmarks/reranker_latency --iterations 5000 \
+            --backend deterministic --p99-budget-us 30000
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-logs
+          path: build/Testing/Temporary/
+
+  macos-build-test-mlx-on:
+    name: macOS · MLX backend smoke
+    runs-on: macos-14
+    needs: macos-build-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools (brew)
+        run: brew install --quiet cmake ninja libgit2 mlx-c
+
+      - name: Configure with MLX enabled
+        run: |
+          cmake -B build-mlx -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DDAFENG_ENABLE_MLX=ON \
+                -DDAFENG_ENABLE_GIT_SYNC=ON
+
+      - name: Build
+        run: cmake --build build-mlx -j
+
+      - name: Test (MLX-on build path)
+        run: ctest --test-dir build-mlx --output-on-failure
+
+  shellcheck:
+    name: shellcheck install.sh + packaging scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint
+        run: |
+          shellcheck install.sh \
+                     packaging/macos/deploy.sh \
+                     packaging/macos/install_launchagent.sh \
+                     tools/rime_redeploy.sh
+
+  python-lint:
+    name: pyflakes tools/*.py
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyflakes
+      - run: pyflakes tools/
