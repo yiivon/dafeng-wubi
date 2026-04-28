@@ -38,7 +38,15 @@ endif()
 add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
 
 find_package(SQLite3 REQUIRED)
-target_link_libraries(dafeng_daemon_core PRIVATE SQLite3::SQLite3)
+if(TARGET SQLite3::SQLite3)
+  target_link_libraries(dafeng_daemon_core PRIVATE SQLite3::SQLite3)
+else()
+  # vcpkg's port doesn't always materialize the SQLite3::SQLite3 IMPORTED
+  # target via CMake's FindSQLite3 module; fall back to the variables it
+  # always sets. Same effect, just not target-form.
+  target_include_directories(dafeng_daemon_core PRIVATE ${SQLite3_INCLUDE_DIRS})
+  target_link_libraries(dafeng_daemon_core PRIVATE ${SQLite3_LIBRARIES})
+endif()
 
 if(DAFENG_ENABLE_GIT_SYNC)
   find_path(GIT2_INCLUDE_DIR git2.h HINTS /opt/homebrew/include /usr/local/include)
