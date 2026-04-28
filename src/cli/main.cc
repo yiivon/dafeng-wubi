@@ -14,6 +14,12 @@
 #include <string_view>
 #include <vector>
 
+#if !defined(_WIN32)
+// pause/resume use launchctl + getuid() + WEXITSTATUS().
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #include "dafeng/client.h"
 #include "dafeng/logging.h"
 #include "dafeng/paths.h"
@@ -47,6 +53,8 @@ void PrintUsage() {
                "  learn [--min-freq N] [--dry-run]  run a learning round\n"
                "  setup [--backend N] [--model-path P]\n"
                "                                    one-shot deploy + launchd install\n"
+               "  pause                             stop the daemon (省电 / 暂停)\n"
+               "  resume                            start the daemon back up\n"
                "  help                              this message\n"
                "\n"
                "Common options:\n"
@@ -224,6 +232,113 @@ int CmdSetup(const std::string& backend, const std::string& model_path) {
       "  2. Ctrl+` to switch to 大风五笔 86\n"
       "  3. dafeng-cli stats   (live counters)\n");
   return 0;
+}
+
+// CmdPause: stop the daemon (laptop battery / "I don't want anything in
+// the background right now"). IME silently degrades to plain RIME via
+// the 30 ms timeout — typing keeps working, just without rerank/learn.
+//
+// Implementation = `launchctl bootout`. The plist stays on disk so
+// `dafeng-cli resume` (or login → RunAtLoad) brings it back without
+// reconfiguration.
+#if !defined(_WIN32)
+namespace {
+
+// `pgrep -x dafeng-daemon | head -1`: returns true if any process by
+// that name is alive. Used to wait for the daemon to fully die before
+// re-bootstrapping (launchd's `bootstrap` frequently EIO's right after
+// `bootout` if the previous instance is still tearing down).
+bool DafengDaemonAlive() {
+  // Quiet pgrep output; we only care about exit code.
+  return std::system("pgrep -x dafeng-daemon >/dev/null 2>&1") == 0;
+}
+
+// Idempotent check: is the launchd label currently loaded?
+bool DafengDaemonLoaded() {
+  std::string cmd = "launchctl print gui/" + std::to_string(getuid()) +
+                    "/com.dafeng.daemon >/dev/null 2>&1";
+  return std::system(cmd.c_str()) == 0;
+}
+
+}  // namespace
+#endif
+
+int CmdPause() {
+#if defined(_WIN32)
+  std::fprintf(stderr,
+                "pause: not yet implemented on Windows (Phase 3.3 follow-up).\n"
+                "       Stop the daemon via Task Manager for now.\n");
+  return 1;
+#else
+  if (!DafengDaemonLoaded()) {
+    std::printf("pause: daemon was not running (already paused).\n");
+    return 0;
+  }
+  std::string cmd = "launchctl bootout gui/" + std::to_string(getuid()) +
+                    "/com.dafeng.daemon";
+  int rc = std::system(cmd.c_str());
+  if (rc != 0 && WEXITSTATUS(rc) != 3) {
+    std::fprintf(stderr, "pause: launchctl bootout failed (rc=%d).\n", rc);
+    return 1;
+  }
+  // Wait up to ~3 s for the daemon process to actually exit. Without
+  // this, a follow-up `resume` race-EIO's against the still-shutting-down
+  // instance (Metal teardown + llama.cpp dtor takes a beat).
+  for (int i = 0; i < 30 && DafengDaemonAlive(); ++i) {
+    ::usleep(100 * 1000);  // 100 ms
+  }
+  std::printf("pause: daemon stopped. IME falls back to plain RIME.\n");
+  std::printf("       Resume with:  dafeng-cli resume\n");
+  return 0;
+#endif
+}
+
+int CmdResume() {
+#if defined(_WIN32)
+  std::fprintf(stderr, "resume: not yet implemented on Windows.\n");
+  return 1;
+#else
+  const char* home = std::getenv("HOME");
+  if (home == nullptr || *home == '\0') {
+    std::fprintf(stderr, "resume: $HOME unset.\n");
+    return 1;
+  }
+  std::string plist = std::string(home) +
+                      "/Library/LaunchAgents/com.dafeng.daemon.plist";
+  std::error_code ec;
+  if (!std::filesystem::exists(plist, ec)) {
+    std::fprintf(stderr,
+                  "resume: launchd plist not found at %s.\n"
+                  "        Run `dafeng-cli setup` first to create it.\n",
+                  plist.c_str());
+    return 1;
+  }
+  if (DafengDaemonLoaded()) {
+    std::printf("resume: daemon already running.\n");
+    return 0;
+  }
+  std::string cmd = "launchctl bootstrap gui/" + std::to_string(getuid()) +
+                    " '" + plist + "' 2>/dev/null";
+  // bootstrap is occasionally EIO right after a bootout while launchd's
+  // per-user domain still cleans up. Retry up to 5 times with 200 ms gap.
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    int rc = std::system(cmd.c_str());
+    if (rc == 0) {
+      std::printf("resume: daemon started. `dafeng-cli stats` to verify.\n");
+      return 0;
+    }
+    if (WEXITSTATUS(rc) == 17) {
+      std::printf("resume: daemon already running.\n");
+      return 0;
+    }
+    ::usleep(200 * 1000);
+  }
+  std::fprintf(stderr,
+                "resume: launchctl bootstrap kept failing — try once more by\n"
+                "        hand:  launchctl bootstrap gui/%d %s\n",
+                getuid(), plist.c_str());
+  return 1;
+#endif
 }
 
 int CmdHistory(int limit) {
@@ -420,6 +535,8 @@ int main(int argc, char** argv) {
                      dry_run);
   }
   if (cmd == "setup") return CmdSetup(backend, model_path);
+  if (cmd == "pause") return CmdPause();
+  if (cmd == "resume") return CmdResume();
   if (cmd == "rerank") {
     if (code.empty() || cands.empty()) {
       std::fprintf(stderr, "rerank requires --code and --cands\n");

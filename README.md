@@ -101,12 +101,17 @@ tail -f ~/Library/Logs/dafeng-daemon.err.log | grep auto-learn
 
 # 强制立即跑一轮学习(若不想等空闲)
 dafeng-cli learn --min-freq 2
+
+# 笔记本电池吃紧?暂停 daemon(IME 自动降级到原生 RIME,继续能打字)
+dafeng-cli pause
+dafeng-cli resume    # 想用回来
 ```
 
 桌面 GUI 入口:`/Applications/Dafeng Inspector.app` —— 三个 tab 看
 状态、输入历史、学到的词,可以一键删错词。
 
-完整速查见 [docs/cheat-sheet.md](docs/cheat-sheet.md)。
+完整速查见 [docs/cheat-sheet.md](docs/cheat-sheet.md)(含 LLM ↔
+deterministic 后端切换)。
 
 ## 数据流(给爱看的人)
 

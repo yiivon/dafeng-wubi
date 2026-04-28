@@ -25,9 +25,40 @@
 - 崩了自动重启(节流间隔 10s)
 - 日志:`~/Library/Logs/dafeng-daemon.out.log` / `.err.log`
 
-卸载:
+### 暂停 / 恢复(省电)
+
+笔记本电池吃紧、或临时不想后台跑 LLM:
+
 ```bash
-launchctl bootout gui/$(id -u)/com.dafeng.daemon
+dafeng-cli pause     # 停 daemon。IME 自动降级到原生 RIME,继续能打字
+dafeng-cli resume    # 重新拉起来
+```
+
+`pause` 会等 daemon 真正退出再返回(避免立即 resume 时 launchctl I/O race)。
+两条命令都是幂等的:已停了再 pause、已起着再 resume,只 print 状态不报错。
+
+### 切换后端(LLM ↔ deterministic)
+
+如果想保持 daemon 跑(为了 stats、history、auto-learn),只是不要 LLM:
+
+```bash
+# 切到 deterministic(占用 ~5MB,vs LLM ~600MB)
+bash packaging/macos/install_launchagent.sh \
+  $(pwd)/build-llama/src/daemon/dafeng-daemon
+
+# 切回 LLM
+DAFENG_BACKEND=llama_cpp \
+DAFENG_MODEL_PATH="$HOME/Library/Application Support/Dafeng/models/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q4_k_m.gguf" \
+  bash packaging/macos/install_launchagent.sh \
+  $(pwd)/build-llama/src/daemon/dafeng-daemon
+```
+
+`dafeng-cli stats` 会显示当前后端 (`deterministic (v1)` vs `llama_cpp (v3)`)。
+
+### 完全卸载
+
+```bash
+dafeng-cli pause
 rm ~/Library/LaunchAgents/com.dafeng.daemon.plist
 ```
 
