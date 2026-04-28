@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/history_store.h"
 #include "../../src/daemon/new_word.h"
 #include "dafeng/types.h"
@@ -16,10 +17,8 @@ namespace {
 class NewWordFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-newword-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    dir_ = dir;
+    dir_ = dafeng::testing::MakeTempDir("dafeng-newword-");
+    ASSERT_FALSE(dir_.empty());
     store_ = MakeSqliteHistoryStore(dir_ / "h.db", dir_);
     ASSERT_NE(store_, nullptr);
   }

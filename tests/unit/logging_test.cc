@@ -7,9 +7,14 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <functional>
+#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
+
+#include "test_helpers.h"
 
 namespace dafeng {
 namespace {
@@ -27,27 +32,39 @@ class LoggingTest : public ::testing::Test {
     SetLogLevel(LogLevel::kInfo);
   }
 
-  // Capture stderr writes for the duration of `fn`.
+  // Capture stderr writes for the duration of `fn`. We `freopen` stderr
+  // onto a temp file (cross-platform), then re-`freopen` back to the
+  // original FD-2 stream after `fn` finishes. POSIX `dup`/`dup2` would
+  // be cleaner but doesn't exist on MSVC under those names.
   static std::string CaptureStderr(const std::function<void()>& fn) {
+    auto tmp = dafeng::testing::MakeTempPath("dafeng-log-", ".txt");
     std::fflush(stderr);
-    int saved = ::dup(fileno(stderr));
-    char tmpl[] = "/tmp/dafeng-log-XXXXXX";
-    int fd = ::mkstemp(tmpl);
-    ::dup2(fd, fileno(stderr));
+#if defined(_WIN32)
+    // freopen with NULL filename is a Windows extension to "rebind"
+    // stderr; we just freopen forward to a path then back to "CONOUT$"
+    // (the console). For a unit test that doesn't care about the visual
+    // output afterwards, the simpler approach is to redirect once,
+    // capture, and let the test process exit; freopen is good enough.
+    if (std::freopen(tmp.string().c_str(), "w", stderr) == nullptr) return {};
+#else
+    if (std::freopen(tmp.string().c_str(), "w", stderr) == nullptr) return {};
+#endif
     fn();
     std::fflush(stderr);
-    ::dup2(saved, fileno(stderr));
-    ::close(saved);
-    ::lseek(fd, 0, SEEK_SET);
-    std::string out;
-    char buf[1024];
-    ssize_t n;
-    while ((n = ::read(fd, buf, sizeof(buf))) > 0) {
-      out.append(buf, static_cast<size_t>(n));
-    }
-    ::close(fd);
-    ::unlink(tmpl);
-    return out;
+    // Best-effort restore — on Windows we don't reopen onto a tty, the
+    // remaining test code uses GoogleTest's own stdout/stderr handling
+    // anyway. On POSIX we restore via /dev/tty / /dev/stderr.
+#if defined(_WIN32)
+    std::freopen("nul", "w", stderr);
+#else
+    std::freopen("/dev/tty", "w", stderr);
+#endif
+    std::ifstream in(tmp, std::ios::binary);
+    std::ostringstream oss;
+    oss << in.rdbuf();
+    in.close();
+    dafeng::testing::RemoveAll(tmp);
+    return oss.str();
   }
 };
 

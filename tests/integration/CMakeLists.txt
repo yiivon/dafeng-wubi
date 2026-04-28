@@ -9,6 +9,8 @@ target_link_libraries(dafeng_integration_tests
     GTest::gtest_main
     Threads::Threads
 )
+target_include_directories(dafeng_integration_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/tests")
 
 gtest_discover_tests(dafeng_integration_tests
   PROPERTIES TIMEOUT 30

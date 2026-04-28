@@ -9,6 +9,8 @@ target_link_libraries(ipc_pingpong
     dafeng::compiler_flags
     Threads::Threads
 )
+target_include_directories(ipc_pingpong PRIVATE
+  "${CMAKE_SOURCE_DIR}/tests")
 
 # Phase 2.1 IPC benchmark: P99 < 5 ms is the contract from DESIGN §3.
 add_test(NAME IpcPingpongBudget

@@ -231,7 +231,7 @@ int CmdHistory(int limit) {
   auto store = dafeng::MakeSqliteHistoryStore(data_dir / "history.db", data_dir);
   if (!store) {
     std::fprintf(stderr, "history: cannot open store under %s\n",
-                  data_dir.c_str());
+                  data_dir.string().c_str());
     return 1;
   }
   std::printf("history: %llu rows total\n",
@@ -251,7 +251,7 @@ int CmdLearn(uint32_t min_freq, bool dry_run) {
       dafeng::MakeSqliteHistoryStore(data_dir / "history.db", data_dir);
   if (!store_unique) {
     std::fprintf(stderr, "learn: cannot open history store under %s\n",
-                  data_dir.c_str());
+                  data_dir.string().c_str());
     return 1;
   }
   std::shared_ptr<dafeng::IHistoryStore> store(std::move(store_unique));

@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/history_store.h"
 #include "../../src/daemon/services.h"
 #include "dafeng/types.h"
@@ -19,10 +20,8 @@ namespace {
 class HistoryStoreFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-history-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    data_root_ = dir;
+    data_root_ = dafeng::testing::MakeTempDir("dafeng-history-");
+    ASSERT_FALSE(data_root_.empty());
     db_path_ = data_root_ / "history.db";
   }
   void TearDown() override {
@@ -79,15 +78,21 @@ TEST_F(HistoryStoreFixture, PrivacyGuardAllowsNestedPath) {
   EXPECT_NE(store, nullptr);
 }
 
+#if !defined(_WIN32)
+// POSIX file-mode test. Windows has ACL inheritance instead of unix-mode
+// bits and history_store.cc skips the chmod() there — see the
+// matching `#if !defined(_WIN32)` in src/daemon/history_store.cc.
+#include <sys/stat.h>
 TEST_F(HistoryStoreFixture, FileMode0600AfterOpen) {
   auto store = MakeSqliteHistoryStore(db_path_, data_root_);
   ASSERT_NE(store, nullptr);
   store->Insert(MakeEvent("a", "b", ""));
 
   struct stat st;
-  ASSERT_EQ(::stat(db_path_.c_str(), &st), 0);
+  ASSERT_EQ(::stat(db_path_.string().c_str(), &st), 0);
   EXPECT_EQ(st.st_mode & 0777, 0600);
 }
+#endif
 
 TEST_F(HistoryStoreFixture, RecentEntriesRespectsLimit) {
   auto store = MakeSqliteHistoryStore(db_path_, data_root_);

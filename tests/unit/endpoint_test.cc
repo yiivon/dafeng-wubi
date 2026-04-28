@@ -5,17 +5,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <random>
 #include <string>
 #include <thread>
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "dafeng/paths.h"
-
-#if !defined(_WIN32)
-#include <unistd.h>
-#endif
 
 namespace dafeng {
 namespace {
@@ -38,22 +34,8 @@ void UnsetTestEnv(const char* key) {
 #endif
 }
 
-// Platform-appropriate, unique endpoint address for a single test.
-// macOS: short UDS path under /tmp (sun_path is capped at 104 chars).
-// Windows: a `\\.\pipe\…` name, which can be up to 256 chars but we keep
-// it short for clarity.
 std::string MakeTempEndpoint() {
-  std::random_device rd;
-  std::uniform_int_distribution<uint32_t> dist;
-  char buf[64];
-#if defined(_WIN32)
-  std::snprintf(buf, sizeof(buf), "\\\\.\\pipe\\dafeng-test-%08x", dist(rd));
-#else
-  std::snprintf(buf, sizeof(buf), "/tmp/dafeng-endpoint-test-%08x.sock",
-                dist(rd));
-  ::unlink(buf);  // ensure clean slate for the bind
-#endif
-  return buf;
+  return dafeng::testing::MakeTempEndpoint("dafeng-endpoint-test-");
 }
 
 TEST(EndpointTest, ConnectFailsWhenNoServer) {

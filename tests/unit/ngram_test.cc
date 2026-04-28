@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/history_store.h"
 #include "../../src/daemon/ngram.h"
 #include "dafeng/types.h"
@@ -16,10 +17,8 @@ namespace {
 class NgramFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-ngram-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    dir_ = dir;
+    dir_ = dafeng::testing::MakeTempDir("dafeng-ngram-");
+    ASSERT_FALSE(dir_.empty());
   }
   void TearDown() override {
     std::error_code ec;

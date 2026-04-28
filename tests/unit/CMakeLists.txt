@@ -20,4 +20,8 @@ target_link_libraries(dafeng_unit_tests
     GTest::gtest_main
 )
 
+# tests/test_helpers.h — cross-platform mkdtemp/mkstemp shim.
+target_include_directories(dafeng_unit_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/tests")
+
 gtest_discover_tests(dafeng_unit_tests)

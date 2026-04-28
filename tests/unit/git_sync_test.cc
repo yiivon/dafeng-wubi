@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/git_sync.h"
 
 namespace dafeng {
@@ -16,10 +17,8 @@ namespace {
 class GitSyncFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-gitsync-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    repo_ = dir;
+    repo_ = dafeng::testing::MakeTempDir("dafeng-gitsync-");
+    ASSERT_FALSE(repo_.empty());
   }
   void TearDown() override {
     std::error_code ec;

@@ -13,8 +13,7 @@
 #include <thread>
 #include <vector>
 
-#include <unistd.h>
-
+#include "test_helpers.h"
 #include "dafeng/client.h"
 #include "dafeng/endpoint.h"
 #include "dafeng/logging.h"
@@ -24,11 +23,7 @@
 namespace {
 
 std::string MakeTempSocketPath() {
-  char tmpl[] = "/tmp/dafeng-bench-XXXXXX";
-  int fd = ::mkstemp(tmpl);
-  if (fd >= 0) ::close(fd);
-  ::unlink(tmpl);
-  return tmpl;
+  return dafeng::testing::MakeTempEndpoint("dafeng-bench-");
 }
 
 uint64_t Percentile(std::vector<uint64_t>& samples, double pct) {

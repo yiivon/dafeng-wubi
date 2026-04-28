@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/wubi_codec.h"
 
 namespace dafeng {
@@ -16,10 +17,9 @@ namespace {
 class WubiCodecFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-wubi-codec-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    dict_path_ = std::filesystem::path(dir) / "wubi86.dict.yaml";
+    auto dir = dafeng::testing::MakeTempDir("dafeng-wubi-codec-");
+    ASSERT_FALSE(dir.empty());
+    dict_path_ = dir / "wubi86.dict.yaml";
   }
   void TearDown() override {
     std::error_code ec;

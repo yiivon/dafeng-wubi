@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/git_sync.h"
 #include "../../src/daemon/history_store.h"
 #include "../../src/daemon/learning_round.h"
@@ -25,10 +26,8 @@ namespace {
 class LearningRoundFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-learn-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    data_dir_ = dir;
+    data_dir_ = dafeng::testing::MakeTempDir("dafeng-learn-");
+    ASSERT_FALSE(data_dir_.empty());
     std::filesystem::create_directories(data_dir_ / "userdata");
     history_ = MakeSqliteHistoryStore(data_dir_ / "history.db", data_dir_);
     ASSERT_NE(history_, nullptr);

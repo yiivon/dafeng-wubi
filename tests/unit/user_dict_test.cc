@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "../../src/daemon/new_word.h"
 #include "../../src/daemon/user_dict.h"
 
@@ -15,10 +16,8 @@ namespace {
 class UserDictFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    char tmpl[] = "/tmp/dafeng-userdict-XXXXXX";
-    char* dir = ::mkdtemp(tmpl);
-    ASSERT_NE(dir, nullptr);
-    dir_ = dir;
+    dir_ = dafeng::testing::MakeTempDir("dafeng-userdict-");
+    ASSERT_FALSE(dir_.empty());
   }
   void TearDown() override {
     std::error_code ec;

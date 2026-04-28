@@ -10,11 +10,9 @@
 #include <thread>
 #include <vector>
 
-#include <unistd.h>
-#include <sys/stat.h>
-
 #include <gtest/gtest.h>
 
+#include "test_helpers.h"
 #include "dafeng/client.h"
 #include "dafeng/endpoint.h"
 #include "dafeng/types.h"
@@ -28,11 +26,7 @@ namespace {
 using std::chrono::milliseconds;
 
 std::string MakeTempSocketPath() {
-  char tmpl[] = "/tmp/dafeng-int-XXXXXX";
-  int fd = ::mkstemp(tmpl);
-  if (fd >= 0) ::close(fd);
-  ::unlink(tmpl);
-  return tmpl;
+  return dafeng::testing::MakeTempEndpoint("dafeng-int-");
 }
 
 class DaemonHarness {
