@@ -156,8 +156,14 @@ static const luaL_Reg kModuleFuncs[] = {
     {NULL, NULL},
 };
 
-#ifdef _WIN32
+// Lua expects luaopen_<modname> to be findable via dlsym. Our build sets
+// -fvisibility=hidden as a default, which would otherwise strip this
+// symbol from the dynamic export table. Force default visibility on
+// platforms that have it (Mac/Linux) and dllexport on Windows.
+#if defined(_WIN32) || defined(__CYGWIN__)
 __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((visibility("default")))
 #endif
 int luaopen_dafeng_lua_bridge(lua_State* L) {
   // Metatable used as both the userdata's mt and the method namespace.
