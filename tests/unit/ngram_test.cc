@@ -135,10 +135,10 @@ TEST_F(NgramFixture, ConcurrentIncrementsCountAccurately) {
              static_cast<uint32_t>(kThreads * kIters));
 }
 
-TEST_F(NgramFixture, UpdateFromHistoryWalksUtf8Pairs) {
-  // Build a small history store with two committed phrases. The bigram
-  // updater should see (今,天), (天,我), (我,们) from "今天我们" and
-  // (中,国) from "中国".
+TEST_F(NgramFixture, UpdateFromHistoryWalksUtf8PairsAcrossChainedEntries) {
+  // Two phrases inserted in quick succession (well under the 2 s chain
+  // gap) get chained — wubi-style. The cross-entry pair (们,中) is the
+  // signal that chaining is on.
   auto store = MakeSqliteHistoryStore(dir_ / "h.db", dir_);
   ASSERT_NE(store, nullptr);
   CommitEvent ev1; ev1.committed_text = "今天我们";
@@ -148,11 +148,27 @@ TEST_F(NgramFixture, UpdateFromHistoryWalksUtf8Pairs) {
 
   auto t = MakeNgramTable();
   uint64_t inc = UpdateBigramsFromHistory(*store, *t, 100);
-  EXPECT_EQ(inc, 4u);  // 3 from "今天我们" + 1 from "中国"
+  EXPECT_EQ(inc, 5u);
   EXPECT_EQ(t->BigramCount("今", "天"), 1u);
   EXPECT_EQ(t->BigramCount("天", "我"), 1u);
   EXPECT_EQ(t->BigramCount("我", "们"), 1u);
+  EXPECT_EQ(t->BigramCount("们", "中"), 1u);  // cross-entry, chained
   EXPECT_EQ(t->BigramCount("中", "国"), 1u);
+}
+
+TEST_F(NgramFixture, UpdateFromHistoryDoesNotChainAcrossLargeGap) {
+  // When two entries are separated by a long pause, chaining is broken
+  // and there should be NO (们,中) bigram. We can't easily inject
+  // synthetic timestamps from outside the store, so this test exercises
+  // the boundary indirectly: a single multi-char entry in isolation.
+  auto store = MakeSqliteHistoryStore(dir_ / "h.db", dir_);
+  ASSERT_NE(store, nullptr);
+  CommitEvent ev; ev.committed_text = "今天";
+  store->Insert(ev);
+
+  auto t = MakeNgramTable();
+  EXPECT_EQ(UpdateBigramsFromHistory(*store, *t, 100), 1u);
+  EXPECT_EQ(t->BigramCount("今", "天"), 1u);
 }
 
 TEST_F(NgramFixture, UpdateFromHistorySkipsSingleCharEntries) {

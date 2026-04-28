@@ -8,6 +8,7 @@
 #include "new_word.h"
 #include "ngram.h"
 #include "user_dict.h"
+#include "wubi_codec.h"
 
 namespace dafeng {
 
@@ -36,6 +37,31 @@ LearningRoundResult RunLearningRound(IHistoryStore& history,
   auto words = discovery.Discover(history, disc_cfg);
   result.words_discovered = words.size();
 
+  // Re-encode each discovered phrase's code via wubi 86 encoder rules.
+  // Without this, the code is just a concatenation of the user-typed
+  // shortcut codes — which is NOT what the user would type to recall
+  // the phrase next time. With the codec, the code becomes the
+  // canonical wubi phrase code (e.g. 弹窗 -> xupw, 这个 -> ypwh).
+  if (!cfg.wubi_dict_path.empty()) {
+    WubiCodec codec;
+    if (codec.LoadFromDict(cfg.wubi_dict_path)) {
+      uint64_t encoded = 0, skipped = 0;
+      for (auto& w : words) {
+        auto canonical = codec.EncodePhrase(w.text);
+        if (!canonical.empty()) {
+          w.code = std::move(canonical);
+          ++encoded;
+        } else if (w.code.empty()) {
+          ++skipped;
+        }
+      }
+      DAFENG_LOG_INFO(
+          "learning_round: wubi-encoded %llu phrases; %llu skipped (missing char codes)",
+          static_cast<unsigned long long>(encoded),
+          static_cast<unsigned long long>(skipped));
+    }
+  }
+
   // Userdata sub-directory holds everything we sync.
   const auto userdata = cfg.data_dir / "userdata";
   std::error_code ec;
@@ -49,6 +75,13 @@ LearningRoundResult RunLearningRound(IHistoryStore& history,
   result.wrote_user_dict =
       user_dict.Generate(words, userdata / "learned_words.yaml");
   result.wrote_ngram = ngram.Save(userdata / "personal_ngram.bin");
+
+  // Phase 2.4 follow-up: also write a librime custom_phrase TSV so the
+  // schema can pick up phrases like 弹窗 (xupw) on the next deploy.
+  // RIME looks for <user_dict>.txt at the root of the user dir.
+  if (!cfg.rime_user_dir.empty()) {
+    WriteCustomPhraseFile(words, cfg.rime_user_dir / "dafeng_learned.txt");
+  }
 
   // Step 4: redeploy sentinel.
   result.requested_redeploy = RequestRimeRedeploy(cfg.data_dir);

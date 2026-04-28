@@ -196,22 +196,40 @@ std::unique_ptr<INgramTable> MakeNgramTable() {
 
 uint64_t UpdateBigramsFromHistory(IHistoryStore& history, INgramTable& table,
                                    uint64_t max_entries) {
+  // Walk in chronological order, chain consecutive commits within 2s as
+  // one phrase, then emit bigrams across the chained sequence. For wubi
+  // this is essential because each commit is a single character.
+  constexpr uint64_t kChainGapUs = 2'000'000;
   uint64_t increments = 0;
-  for (const auto& entry : history.RecentEntries(max_entries)) {
+
+  auto entries = history.RecentEntries(max_entries);
+  std::sort(entries.begin(), entries.end(),
+             [](const HistoryEntry& a, const HistoryEntry& b) {
+               return a.ts_us < b.ts_us;
+             });
+
+  std::string prev_char;
+  uint64_t prev_ts = 0;
+  for (const auto& entry : entries) {
+    if (!prev_char.empty() && (entry.ts_us - prev_ts) > kChainGapUs) {
+      // Phrase boundary — drop the last char so we don't form bigrams
+      // across unrelated entries.
+      prev_char.clear();
+    }
     const std::string& s = entry.committed_text;
     std::size_t i = 0;
-    std::string prev;
     while (i < s.size()) {
       const auto n = Utf8Len(s, i);
       if (n == 0) break;
       std::string ch = s.substr(i, n);
-      if (!prev.empty()) {
-        table.IncrementBigram(prev, ch);
+      if (!prev_char.empty()) {
+        table.IncrementBigram(prev_char, ch);
         ++increments;
       }
-      prev = std::move(ch);
+      prev_char = std::move(ch);
       i += n;
     }
+    prev_ts = entry.ts_us;
   }
   return increments;
 }

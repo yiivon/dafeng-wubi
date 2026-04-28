@@ -35,6 +35,13 @@ class NewWordFixture : public ::testing::Test {
     store_->Insert(ev);
   }
 
+  void InsertWithCode(const std::string& text, const std::string& code) {
+    CommitEvent ev;
+    ev.code = code;
+    ev.committed_text = text;
+    store_->Insert(ev);
+  }
+
   std::filesystem::path dir_;
   std::unique_ptr<IHistoryStore> store_;
 };
@@ -164,6 +171,57 @@ TEST_F(NewWordFixture, FirstAndLastSeenTimestampsArePopulated) {
     }
   }
   FAIL() << "expected 今天 in discovery output";
+}
+
+TEST_F(NewWordFixture, CodeAttributionAcrossSplitTypedSingles) {
+  // Mimic Kevin's "弹窗" scenario: user types xu -> 弹, then immediately
+  // pw -> 窗, two SEPARATE single-char commits within the chain window.
+  // Discovery should produce (text="弹窗", code="xupw").
+  InsertWithCode("弹", "xu");
+  InsertWithCode("窗", "pw");
+  InsertWithCode("弹", "xu");  // do it twice so freq=2
+  InsertWithCode("窗", "pw");
+
+  auto disc = MakeFrequencyNewWordDiscovery();
+  DiscoveryConfig cfg;
+  cfg.min_frequency = 2;
+  auto out = disc->Discover(*store_, cfg);
+
+  bool found = false;
+  for (const auto& w : out) {
+    if (w.text == "弹窗") {
+      EXPECT_EQ(w.code, "xupw") << "code attribution failed";
+      EXPECT_GE(w.frequency, 2u);
+      found = true;
+    }
+  }
+  EXPECT_TRUE(found) << "弹窗 (xupw) was not discovered";
+}
+
+TEST_F(NewWordFixture, MultiCharEntryDoesNotPolluteCodeAttribution) {
+  // A multi-char entry has no per-char code attribution. Bigrams that
+  // contain any token from such an entry should land with code="".
+  InsertWithCode("感谢", "ndpy");  // already-known phrase, multi-char
+  InsertWithCode("你", "wq");
+  InsertWithCode("们", "wu");
+
+  auto disc = MakeFrequencyNewWordDiscovery();
+  DiscoveryConfig cfg;
+  cfg.min_frequency = 1;
+  auto out = disc->Discover(*store_, cfg);
+
+  // 你们 should be discovered with code=wqwu (both single-char entries).
+  // 谢你 (cross-boundary from multi-char entry) should have code="".
+  bool ni_men_found = false;
+  for (const auto& w : out) {
+    if (w.text == "你们") {
+      ni_men_found = true;
+      EXPECT_EQ(w.code, "wqwu");
+    } else if (w.text == "谢你") {
+      EXPECT_EQ(w.code, "") << "code from a multi-char entry leaked";
+    }
+  }
+  EXPECT_TRUE(ni_men_found);
 }
 
 TEST_F(NewWordFixture, ConfigDisablesBigramsAndTrigrams) {

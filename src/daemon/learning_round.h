@@ -28,6 +28,17 @@ class IGitSync;
 
 struct LearningRoundConfig {
   std::filesystem::path data_dir;       // root for output files
+  // RIME's user dir, where librime looks for custom_phrase TSVs and
+  // schemas. Mac default: ~/Library/Rime. Empty = skip writing the
+  // RIME-readable dafeng_learned.txt (used in tests / when RIME isn't
+  // installed).
+  std::filesystem::path rime_user_dir;
+  // Path to wubi86.dict.yaml; used to look up each character's full
+  // wubi code so phrase codes can be synthesized per the wubi 86
+  // encoder rules. Empty = skip canonical encoding (the daemon falls
+  // back to the user-typed concat code, which doesn't match how the
+  // user would actually type the phrase).
+  std::filesystem::path wubi_dict_path;
   uint32_t min_new_word_freq = 3;       // see DiscoveryConfig
   uint64_t scan_max_entries = 5000;     // see DiscoveryConfig
   uint64_t ngram_scan_max_entries = 5000;

@@ -1,8 +1,10 @@
 #include "new_word.h"
 
 #include <algorithm>
+#include <limits>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "history_store.h"
 
@@ -90,35 +92,96 @@ class FrequencyDiscovery final : public INewWordDiscovery {
       uint32_t count = 0;
       uint64_t first_us = std::numeric_limits<uint64_t>::max();
       uint64_t last_us = 0;
+      std::string code;  // best (longest) attributable code seen
     };
     std::unordered_map<std::string, Counter> counts;
 
-    for (const auto& e : entries) {
+    // A token is one (char, source-code) pair coming from a SINGLE-char
+    // commit. Multi-char commits don't contribute code-attributable
+    // tokens — they're already-known phrases for which the user picked a
+    // candidate by prefix code, so per-char code attribution is lossy.
+    struct Token {
+      std::string ch;
+      std::string code;  // empty if from a multi-char entry
+      uint64_t ts;
+    };
+
+    auto emit_token_ngrams = [&](const std::vector<Token>& toks) {
+      // Emit bigrams + trigrams over a chained run of tokens. Code is
+      // concatenated only when EVERY contributing token has a non-empty
+      // code (i.e., all came from single-char commits).
+      auto emit = [&](std::size_t i, std::size_t span) {
+        std::string text;
+        std::string code;
+        bool code_ok = true;
+        uint64_t ts0 = toks[i].ts;
+        for (std::size_t k = 0; k < span; ++k) {
+          text += toks[i + k].ch;
+          if (toks[i + k].code.empty()) {
+            code_ok = false;
+          } else {
+            code += toks[i + k].code;
+          }
+        }
+        auto& c = counts[text];
+        ++c.count;
+        c.first_us = std::min(c.first_us, ts0);
+        c.last_us = std::max(c.last_us, ts0);
+        if (code_ok) {
+          // Pick the longest seen code attribution; usually they'll all
+          // be the same length, but be defensive.
+          if (code.size() > c.code.size()) c.code = std::move(code);
+        }
+      };
+      if (cfg.include_bigrams) {
+        for (std::size_t i = 0; i + 1 < toks.size(); ++i) emit(i, 2);
+      }
+      if (cfg.include_trigrams) {
+        for (std::size_t i = 0; i + 2 < toks.size(); ++i) emit(i, 3);
+      }
+    };
+
+    auto entry_to_tokens = [](const HistoryEntry& e) {
+      std::vector<Token> tks;
       const auto offs = CharOffsets(e.committed_text);
-      // Bigrams: chars [i .. i+1], substring [offs[i], offs[i+2])
-      if (cfg.include_bigrams && offs.size() >= 2) {
-        for (std::size_t i = 0; i + 1 < offs.size(); ++i) {
-          const std::size_t end =
-              (i + 2 < offs.size()) ? offs[i + 2] : e.committed_text.size();
-          auto sub = e.committed_text.substr(offs[i], end - offs[i]);
-          auto& c = counts[sub];
-          ++c.count;
-          c.first_us = std::min(c.first_us, e.ts_us);
-          c.last_us = std::max(c.last_us, e.ts_us);
-        }
+      // If the entry produced exactly one UTF-8 character, attribute the
+      // commit code to that char. Multi-char entries get empty code per
+      // token (we still emit text so chaining works, but code-attributable
+      // bigrams won't be claimed across them).
+      const bool single_char = offs.size() == 1;
+      for (std::size_t i = 0; i < offs.size(); ++i) {
+        const std::size_t end =
+            (i + 1 < offs.size()) ? offs[i + 1] : e.committed_text.size();
+        Token t;
+        t.ch = e.committed_text.substr(offs[i], end - offs[i]);
+        t.code = single_char ? e.code : std::string{};
+        t.ts = e.ts_us;
+        tks.push_back(std::move(t));
       }
-      // Trigrams: chars [i .. i+2], substring [offs[i], offs[i+3])
-      if (cfg.include_trigrams && offs.size() >= 3) {
-        for (std::size_t i = 0; i + 2 < offs.size(); ++i) {
-          const std::size_t end =
-              (i + 3 < offs.size()) ? offs[i + 3] : e.committed_text.size();
-          auto sub = e.committed_text.substr(offs[i], end - offs[i]);
-          auto& c = counts[sub];
-          ++c.count;
-          c.first_us = std::min(c.first_us, e.ts_us);
-          c.last_us = std::max(c.last_us, e.ts_us);
-        }
+      return tks;
+    };
+
+    if (cfg.chain_max_gap_us == 0) {
+      for (const auto& e : entries) {
+        auto tks = entry_to_tokens(e);
+        emit_token_ngrams(tks);
       }
+    } else {
+      std::vector<HistoryEntry> chrono(entries.begin(), entries.end());
+      std::sort(chrono.begin(), chrono.end(),
+                 [](const auto& a, const auto& b) { return a.ts_us < b.ts_us; });
+
+      std::vector<Token> run;
+      uint64_t prev_ts = 0;
+      for (const auto& e : chrono) {
+        if (!run.empty() && (e.ts_us - prev_ts) > cfg.chain_max_gap_us) {
+          emit_token_ngrams(run);
+          run.clear();
+        }
+        for (auto& t : entry_to_tokens(e)) run.push_back(std::move(t));
+        prev_ts = e.ts_us;
+      }
+      if (!run.empty()) emit_token_ngrams(run);
     }
 
     std::vector<DiscoveredWord> out;
@@ -128,6 +191,7 @@ class FrequencyDiscovery final : public INewWordDiscovery {
       if (!LooksLikeRealCandidate(kv.first)) continue;
       DiscoveredWord w;
       w.text = kv.first;
+      w.code = kv.second.code;
       w.frequency = kv.second.count;
       w.first_seen_us = kv.second.first_us;
       w.last_seen_us = kv.second.last_us;

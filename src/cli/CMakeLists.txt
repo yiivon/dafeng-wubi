@@ -7,5 +7,6 @@ add_executable(dafeng-cli
 target_link_libraries(dafeng-cli
   PRIVATE
     dafeng::client
+    dafeng::daemon_core  # for `dafeng-cli learn` — runs RunLearningRound
     dafeng::compiler_flags
 )

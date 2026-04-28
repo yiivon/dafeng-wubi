@@ -14,6 +14,7 @@ set(DAFENG_DAEMON_SOURCES
   new_word.cc
   user_dict.cc
   learning_round.cc
+  wubi_codec.cc
 )
 
 if(DAFENG_ENABLE_GIT_SYNC)

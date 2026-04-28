@@ -10,6 +10,7 @@ add_executable(dafeng_unit_tests
   user_dict_test.cc
   git_sync_test.cc
   learning_round_test.cc
+  wubi_codec_test.cc
 )
 
 target_link_libraries(dafeng_unit_tests
