@@ -23,7 +23,7 @@ if [[ ! -d "$RIME_DIR" ]]; then
 fi
 
 PLUGIN_BIN="$REPO_ROOT/$BUILD_DIR/src/plugin/dafeng_lua_bridge.so"
-SCHEMA_SRC="$REPO_ROOT/schemas/wubi.schema.yaml"
+SCHEMA_SRC="$REPO_ROOT/schemas/wubi86_dafeng.schema.yaml"
 FILTER_SRC="$REPO_ROOT/src/plugin/dafeng_filter.lua"
 RERANK_SRC="$REPO_ROOT/src/plugin/dafeng_rerank.lua"
 
@@ -43,8 +43,10 @@ cp -v "$FILTER_SRC" "$RIME_DIR/lua/dafeng_filter.lua"
 cp -v "$RERANK_SRC" "$RIME_DIR/lua/dafeng_rerank.lua"
 cp -v "$PLUGIN_BIN" "$RIME_DIR/lua/dafeng_lua_bridge.so"
 
-# The schema goes at the top of the user dir.
-cp -v "$SCHEMA_SRC" "$RIME_DIR/wubi.schema.yaml"
+# The schema goes at the top of the user dir. Filename MUST equal
+# schema_id per RIME convention, otherwise deploy errors with
+# "missing input schema".
+cp -v "$SCHEMA_SRC" "$RIME_DIR/wubi86_dafeng.schema.yaml"
 
 cat <<EOF
 
