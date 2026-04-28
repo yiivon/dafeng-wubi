@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd LaunchAgent for dafeng-daemon. Install via:
+      bash packaging/macos/install_launchagent.sh
+
+  Lifecycle:
+    - Auto-starts on user login
+    - Auto-restarts if it crashes (KeepAlive=true)
+    - Logs to ~/Library/Logs/dafeng-daemon.{out,err}.log
+    - Talks to the IME via the default UDS at
+      ~/Library/Application Support/Dafeng/daemon.sock
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dafeng.daemon</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BINARY_PATH__</string>
+    <string>--foreground</string>
+    <string>--log-level</string>
+    <string>info</string>
+  </array>
+
+  <!-- Start at login + keep alive on crash. -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Don't spam restarts during a tight crash loop. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/dafeng-daemon.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/dafeng-daemon.err.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+
+  <!-- Environment: HOME so paths_mac.cc resolves the data dir correctly. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+</dict>
+</plist>
