@@ -255,10 +255,12 @@ int CmdStats(const CommonArgs& args) {
   }
   const auto rc = stats->rerank_count;
   const auto mean_us = rc > 0 ? stats->rerank_latency_sum_us / rc : 0;
-  static const char* const kModelNames[] = {"mock", "deterministic", "mlx"};
-  const char* model_name = stats->rerank_model_version < 3
-                               ? kModelNames[stats->rerank_model_version]
-                               : "unknown";
+  static const char* const kModelNames[] = {"mock", "deterministic", "mlx",
+                                             "llama_cpp"};
+  const char* model_name =
+      stats->rerank_model_version < (sizeof(kModelNames) / sizeof(*kModelNames))
+          ? kModelNames[stats->rerank_model_version]
+          : "unknown";
   std::printf("daemon uptime    : %llu s\n",
               (unsigned long long)stats->uptime_sec);
   std::printf("rerank model     : %s (v%u)\n", model_name,

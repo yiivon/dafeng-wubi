@@ -4,6 +4,7 @@ add_executable(dafeng_unit_tests
   mock_reranker_test.cc
   logging_test.cc
   reranker_deterministic_test.cc
+  reranker_llamacpp_test.cc
   history_store_test.cc
   ngram_test.cc
   new_word_test.cc

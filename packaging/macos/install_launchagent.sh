@@ -5,8 +5,16 @@
 # Idempotent: re-running updates the binary path and reloads.
 #
 # Usage:
-#   ./packaging/macos/install_launchagent.sh
-#   ./packaging/macos/install_launchagent.sh /path/to/dafeng-daemon
+#   ./install_launchagent.sh
+#       Default: deterministic backend (no model file needed)
+#
+#   ./install_launchagent.sh /path/to/dafeng-daemon
+#       Override the daemon binary path
+#
+#   DAFENG_BACKEND=llama_cpp \
+#   DAFENG_MODEL_PATH=/path/to.gguf \
+#   ./install_launchagent.sh /path/to/dafeng-daemon-llama
+#       Use the llama.cpp backend with a specific GGUF model
 #
 # Uninstall:
 #   launchctl bootout gui/$(id -u)/com.dafeng.daemon
@@ -17,6 +25,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLIST_TEMPLATE="$REPO_ROOT/packaging/macos/com.dafeng.daemon.plist"
 DAEMON_BIN="${1:-$REPO_ROOT/build/src/daemon/dafeng-daemon}"
+BACKEND="${DAFENG_BACKEND:-}"
+MODEL_PATH="${DAFENG_MODEL_PATH:-}"
 
 if [[ ! -x "$DAEMON_BIN" ]]; then
   echo "[error] daemon binary not executable: $DAEMON_BIN" >&2
@@ -27,9 +37,19 @@ fi
 PLIST_DEST="$HOME/Library/LaunchAgents/com.dafeng.daemon.plist"
 mkdir -p "$(dirname "$PLIST_DEST")"
 
-# Template substitution: replace __BINARY_PATH__ and __HOME__.
+# Build the optional <string>...</string> entries for backend / model.
+EXTRA_ARGS=""
+if [[ -n "$BACKEND" ]]; then
+  EXTRA_ARGS="<string>--backend</string><string>$BACKEND</string>"
+fi
+if [[ -n "$MODEL_PATH" ]]; then
+  EXTRA_ARGS="$EXTRA_ARGS<string>--model-path</string><string>$MODEL_PATH</string>"
+fi
+
+# Template substitution.
 sed -e "s|__BINARY_PATH__|$DAEMON_BIN|g" \
     -e "s|__HOME__|$HOME|g" \
+    -e "s|__EXTRA_ARGS__|$EXTRA_ARGS|g" \
     "$PLIST_TEMPLATE" > "$PLIST_DEST"
 
 LABEL="com.dafeng.daemon"

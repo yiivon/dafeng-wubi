@@ -55,6 +55,14 @@ struct MLXRerankConfig {
 std::unique_ptr<IRerankService> MakeMLXRerankService(
     const MLXRerankConfig& config);
 
+// Phase 3.2: llama.cpp-backed reranker (cross-platform, real LLM).
+// Same config struct as MLX; model_path points to a GGUF file.
+// Returns nullptr if DAFENG_ENABLE_LLAMA_CPP=OFF at build time, model
+// file is missing, or the model can't be loaded. RerankResponse.
+// model_version=3 distinguishes this path.
+std::unique_ptr<IRerankService> MakeLlamaCppRerankService(
+    const MLXRerankConfig& config);
+
 // Phase 2.1: a no-op commit logger. Used by tests.
 std::unique_ptr<ICommitLogger> MakeNullCommitLogger();
 

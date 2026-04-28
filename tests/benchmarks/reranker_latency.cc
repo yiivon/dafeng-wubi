@@ -85,6 +85,18 @@ int main(int argc, char** argv) {
                     "rebuild with -DDAFENG_ENABLE_MLX=ON and pass --model-path\n");
       return 2;
     }
+  } else if (backend == "llama_cpp" || backend == "llamacpp") {
+    dafeng::MLXRerankConfig cfg;
+    cfg.model_path = model_path;
+    cfg.warmup_iterations = 2;
+    svc = dafeng::MakeLlamaCppRerankService(cfg);
+    if (!svc) {
+      std::fprintf(stderr,
+                    "llama_cpp backend unavailable; rebuild with "
+                    "-DDAFENG_ENABLE_LLAMA_CPP=ON and pass --model-path "
+                    "(GGUF file from tools/download_model.py)\n");
+      return 2;
+    }
   } else {
     std::fprintf(stderr, "unknown backend: %s\n", backend.c_str());
     return 1;

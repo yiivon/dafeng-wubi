@@ -29,6 +29,12 @@ else()
   list(APPEND DAFENG_DAEMON_SOURCES reranker_mlx_stub.cc)
 endif()
 
+if(DAFENG_ENABLE_LLAMA_CPP)
+  list(APPEND DAFENG_DAEMON_SOURCES reranker_llamacpp.cc)
+else()
+  list(APPEND DAFENG_DAEMON_SOURCES reranker_llamacpp_stub.cc)
+endif()
+
 add_library(dafeng_daemon_core STATIC ${DAFENG_DAEMON_SOURCES})
 
 find_package(SQLite3 REQUIRED)
@@ -65,6 +71,30 @@ if(DAFENG_ENABLE_MLX AND APPLE)
     message(WARNING "dafeng: DAFENG_ENABLE_MLX=ON but mlx / mlx-c not found. "
                     "Install via 'brew install mlx-c'. The reranker will run "
                     "via the deterministic fallback at runtime.")
+  endif()
+endif()
+
+if(DAFENG_ENABLE_LLAMA_CPP)
+  # llama.cpp from brew or system. We need libllama (high-level API) AND
+  # libggml (which exposes ggml_backend_load_all — required to discover
+  # Metal/CPU backends before model load).
+  find_path(LLAMA_INCLUDE_DIR llama.h
+    HINTS /opt/homebrew/include /usr/local/include)
+  find_library(LLAMA_LIBRARY llama
+    HINTS /opt/homebrew/lib /usr/local/lib)
+  find_library(GGML_LIBRARY ggml
+    HINTS /opt/homebrew/lib /usr/local/lib)
+  find_library(GGML_BASE_LIBRARY ggml-base
+    HINTS /opt/homebrew/lib /usr/local/lib)
+  if(LLAMA_INCLUDE_DIR AND LLAMA_LIBRARY AND GGML_LIBRARY AND GGML_BASE_LIBRARY)
+    message(STATUS "dafeng: llama.cpp found at ${LLAMA_INCLUDE_DIR}")
+    target_include_directories(dafeng_daemon_core PRIVATE ${LLAMA_INCLUDE_DIR})
+    target_link_libraries(dafeng_daemon_core PRIVATE
+      ${LLAMA_LIBRARY} ${GGML_LIBRARY} ${GGML_BASE_LIBRARY})
+  else()
+    message(WARNING "dafeng: DAFENG_ENABLE_LLAMA_CPP=ON but llama.cpp / ggml "
+                    "not found. Install via 'brew install llama.cpp'. The "
+                    "reranker will run via the deterministic fallback.")
   endif()
 endif()
 

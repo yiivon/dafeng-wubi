@@ -42,18 +42,21 @@ void PrintUsage() {
                "  --foreground         run in foreground (default)\n"
                "  --addr <path>        socket path / pipe name\n"
                "  --log-level <lvl>    debug | info | warn | error\n"
-               "  --backend <name>     mock | deterministic | mlx\n"
+               "  --backend <name>     mock | deterministic | mlx | llama_cpp\n"
                "                       (default: deterministic)\n"
-               "  --model-path <path>  MLX model file (used when backend=mlx)\n"
+               "  --model-path <path>  model file (MLX safetensors / GGUF)\n"
                "  -h, --help           show this help\n");
 }
 
-enum class BackendKind { kMock, kDeterministic, kMLX };
+enum class BackendKind { kMock, kDeterministic, kMLX, kLlamaCpp };
 
 bool ParseBackend(const std::string& s, BackendKind* out) {
   if (s == "mock") { *out = BackendKind::kMock; return true; }
   if (s == "deterministic") { *out = BackendKind::kDeterministic; return true; }
   if (s == "mlx") { *out = BackendKind::kMLX; return true; }
+  if (s == "llama_cpp" || s == "llamacpp") {
+    *out = BackendKind::kLlamaCpp; return true;
+  }
   return false;
 }
 
@@ -62,6 +65,7 @@ const char* BackendName(BackendKind b) {
     case BackendKind::kMock: return "mock";
     case BackendKind::kDeterministic: return "deterministic";
     case BackendKind::kMLX: return "mlx";
+    case BackendKind::kLlamaCpp: return "llama_cpp";
   }
   return "?";
 }
@@ -91,6 +95,20 @@ std::unique_ptr<dafeng::IRerankService> BuildReranker(BackendKind kind,
         DAFENG_LOG_ERROR(
             "MLX backend not available — was DAFENG_ENABLE_MLX=ON at build "
             "time? Falling back to deterministic.");
+        return dafeng::MakeDeterministicRerankService();
+      }
+      return svc;
+    }
+    case BackendKind::kLlamaCpp: {
+      dafeng::MLXRerankConfig cfg;  // shared config struct; model_path is GGUF
+      cfg.model_path = model_path;
+      cfg.warmup_iterations = 2;
+      auto svc = dafeng::MakeLlamaCppRerankService(cfg);
+      if (!svc) {
+        DAFENG_LOG_ERROR(
+            "llama.cpp backend not available — was DAFENG_ENABLE_LLAMA_CPP=ON "
+            "at build time and is the GGUF model_path correct? Falling back "
+            "to deterministic.");
         return dafeng::MakeDeterministicRerankService();
       }
       return svc;

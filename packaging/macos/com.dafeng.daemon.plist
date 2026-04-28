@@ -23,6 +23,7 @@
     <string>--foreground</string>
     <string>--log-level</string>
     <string>info</string>
+__EXTRA_ARGS__
   </array>
 
   <!-- Start at login + keep alive on crash. -->

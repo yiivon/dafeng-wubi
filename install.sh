@@ -101,7 +101,7 @@ if ! command -v brew >/dev/null 2>&1; then
   fatal "Homebrew not installed. See https://brew.sh"
 fi
 
-want_pkgs=(cmake ninja libgit2 mlx-c)
+want_pkgs=(cmake ninja libgit2 mlx-c llama.cpp)
 need_install=()
 for p in "${want_pkgs[@]}"; do
   if ! brew list --formula "$p" >/dev/null 2>&1; then

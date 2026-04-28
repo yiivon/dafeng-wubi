@@ -4,8 +4,41 @@ All notable changes to dafeng-wubi follow [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
-### Added
-- (placeholder for next release)
+### Added (Phase 3.2 — real LLM)
+
+- **llama.cpp backend** for the reranker (`reranker_llamacpp.cc` /
+  `_stub.cc`). Loads a Qwen 2.5 0.5B GGUF, runs one forward pass per
+  request, scores candidates by their first token's logit. KV cache
+  reset per request to keep the implementation simple; tight enough
+  that a 64-token prompt + scoring of ≤ 10 candidates fits well in
+  the 30 ms P99 budget on M-series.
+- **`--backend llama_cpp`** flag on `dafeng-daemon`. Sits alongside the
+  existing `mock` / `deterministic` / `mlx` options. `RerankResponse.
+  model_version=3` distinguishes this path so observability (`dafeng-cli
+  stats`) reports it.
+- **`tools/download_model.py`** rewritten to support both GGUF
+  (`--backend llama_cpp`, default) and MLX (`--backend mlx`) formats.
+  The script never auto-runs — explicit user action per CLAUDE.md.
+- **Benchmark integration**: `tests/benchmarks/reranker_latency` accepts
+  `--backend llama_cpp --model-path <gguf>` for live measurement.
+- **`docs/phase-3.2.md`**: architectural rationale (llama.cpp over
+  custom-MLX), failure-mode table, build/run/benchmark recipes.
+- **`install.sh`**: adds `llama.cpp` to its brew packages list.
+
+### Pivot
+
+The MLX backend (Phase 2.2.B) remains in-tree as a working scaffold —
+factory + smoke test + lifecycle — but the real-LLM scoring path is
+now llama.cpp. MLX is parked as a future Apple-native backend for
+someone with deep MLX expertise to fill in. Both backends produce
+distinguishable `model_version` values so live runs are observable.
+
+### Tests
+
+146/146 passing in BOTH the default build (llama OFF, falls back to
+deterministic) and the `-DDAFENG_ENABLE_LLAMA_CPP=ON` build. Two new
+factory-contract tests assert nullptr returns on missing/empty
+model paths regardless of build flag.
 
 ## [0.1.0] — 2026-04-28
 
