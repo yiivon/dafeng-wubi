@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,6 +45,8 @@ void PrintUsage() {
                "  stats                             dump daemon counters\n"
                "  history [--limit N]               dump recent commits\n"
                "  learn [--min-freq N] [--dry-run]  run a learning round\n"
+               "  setup [--backend N] [--model-path P]\n"
+               "                                    one-shot deploy + launchd install\n"
                "  help                              this message\n"
                "\n"
                "Common options:\n"
@@ -132,6 +135,94 @@ int CmdCommit(const CommonArgs& args, const std::string& code,
   client.RecordCommit(code, text, ctx);
   std::printf("commit sent (fire-and-forget)\n");
   (void)args;
+  return 0;
+}
+
+// Find the dafeng share dir produced by the .pkg or brew formula.
+std::string FindShareDir() {
+  static const char* const kCandidates[] = {
+      "/usr/local/share/dafeng",            // .pkg installer + Linux
+      "/opt/homebrew/share/dafeng",         // Apple Silicon brew
+      "/opt/homebrew/opt/dafeng-wubi/share/dafeng",
+  };
+  for (const char* p : kCandidates) {
+    std::error_code ec;
+    if (std::filesystem::exists(std::filesystem::path(p) / "deploy.sh", ec)) {
+      return p;
+    }
+  }
+  return "/usr/local/share/dafeng";  // best-guess for diagnostics
+}
+
+int CmdSetup(const std::string& backend, const std::string& model_path) {
+  const std::string share_dir = FindShareDir();
+  std::error_code ec;
+  if (!std::filesystem::exists(std::filesystem::path(share_dir) / "deploy.sh",
+                                 ec)) {
+    std::fprintf(stderr,
+                  "setup: cannot find dafeng share dir.\n"
+                  "  Looked under /usr/local/share/dafeng,"
+                  " /opt/homebrew/share/dafeng.\n"
+                  "  Are you running from a dev tree? Use ./install.sh\n"
+                  "  for a source build.\n");
+    return 1;
+  }
+  std::printf("setup: share dir = %s\n", share_dir.c_str());
+
+  // 1. deploy schemas / Lua / .so to ~/Library/Rime
+  std::string deploy_cmd = share_dir + "/deploy.sh";
+  std::printf("setup: running %s\n", deploy_cmd.c_str());
+  if (int rc = std::system(deploy_cmd.c_str()); rc != 0) {
+    std::fprintf(stderr, "setup: deploy.sh failed (rc=%d)\n", rc);
+    return rc;
+  }
+
+  // 2. install launchd LaunchAgent (optionally with backend / model env)
+  std::string daemon_bin = "/usr/local/bin/dafeng-daemon";
+  if (!std::filesystem::exists(daemon_bin, ec)) {
+    daemon_bin = "/opt/homebrew/bin/dafeng-daemon";
+  }
+  std::string env_prefix;
+  if (backend == "llama_cpp") {
+    std::string model = model_path;
+    if (model.empty()) {
+      const char* home = std::getenv("HOME");
+      if (home != nullptr) {
+        model = std::string(home) +
+                "/Library/Application Support/Dafeng/models/"
+                "Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+      }
+    }
+    if (!std::filesystem::exists(model, ec)) {
+      std::fprintf(stderr,
+                    "setup: --backend llama_cpp requires a GGUF model.\n"
+                    "  Tried: %s\n"
+                    "  Download via:\n"
+                    "    python3 tools/download_model.py --backend llama_cpp\n",
+                    model.c_str());
+      return 2;
+    }
+    env_prefix = "DAFENG_BACKEND=llama_cpp DAFENG_MODEL_PATH='" + model + "' ";
+  } else if (!backend.empty() && backend != "deterministic") {
+    env_prefix = "DAFENG_BACKEND=" + backend + " ";
+    if (!model_path.empty()) {
+      env_prefix += "DAFENG_MODEL_PATH='" + model_path + "' ";
+    }
+  }
+
+  std::string la_cmd =
+      env_prefix + share_dir + "/install_launchagent.sh '" + daemon_bin + "'";
+  std::printf("setup: running %s\n", la_cmd.c_str());
+  if (int rc = std::system(la_cmd.c_str()); rc != 0) {
+    std::fprintf(stderr, "setup: install_launchagent.sh failed (rc=%d)\n", rc);
+    return rc;
+  }
+
+  std::printf(
+      "\nsetup complete. Next:\n"
+      "  1. menu bar 鼠须管 -> Deploy (one-shot, schema reload)\n"
+      "  2. Ctrl+` to switch to 大风五笔 86\n"
+      "  3. dafeng-cli stats   (live counters)\n");
   return 0;
 }
 
@@ -295,6 +386,7 @@ int main(int argc, char** argv) {
   CommonArgs common;
   common.addr = dafeng::GetDaemonAddress();
   std::string code, ctx, cands, app, text;
+  std::string backend, model_path;
   int history_limit = 20;
   int min_freq = 2;
   bool dry_run = false;
@@ -307,6 +399,8 @@ int main(int argc, char** argv) {
     if (TakeArg(i, argc, argv, "--cands", &cands)) continue;
     if (TakeArg(i, argc, argv, "--app", &app)) continue;
     if (TakeArg(i, argc, argv, "--text", &text)) continue;
+    if (TakeArg(i, argc, argv, "--backend", &backend)) continue;
+    if (TakeArg(i, argc, argv, "--model-path", &model_path)) continue;
     if (TakeArgInt(i, argc, argv, "--limit", &history_limit)) continue;
     if (TakeArgInt(i, argc, argv, "--min-freq", &min_freq)) continue;
     if (std::strcmp(argv[i], "--dry-run") == 0) { dry_run = true; continue; }
@@ -325,6 +419,7 @@ int main(int argc, char** argv) {
     return CmdLearn(static_cast<uint32_t>(min_freq < 1 ? 1 : min_freq),
                      dry_run);
   }
+  if (cmd == "setup") return CmdSetup(backend, model_path);
   if (cmd == "rerank") {
     if (code.empty() || cands.empty()) {
       std::fprintf(stderr, "rerank requires --code and --cands\n");

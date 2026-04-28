@@ -4,6 +4,9 @@ build-*/
 out/
 cmake-build-*/
 
+# Release artifacts (.pkg, .tar.gz from packaging/macos/build-pkg.sh)
+dist/
+
 # CMake artifacts
 CMakeCache.txt
 CMakeFiles/

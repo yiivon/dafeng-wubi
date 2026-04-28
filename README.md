@@ -34,29 +34,47 @@
 - **可拒绝**:每个 commit 都在你的 SQLite 里,不喜欢的词直接 SQL
   删掉。无云、无账号、无锁定。
 
-## 安装(macOS,一条命令)
+## 安装(macOS,三种方式任选)
 
-需要 macOS 14+,Apple Silicon 或 Intel,Homebrew + Xcode CLT。
+需要 macOS 14+,Apple Silicon 或 Intel。Squirrel 输入法必须先装好
+(`brew install --cask squirrel` 然后在"系统设置 → 键盘 → 输入源"启用)。
+
+### A. `.pkg` 双击安装(给非开发者)
+
+从 [Releases](https://github.com/kevin/dafeng-wubi/releases) 下载
+对应架构的 `.pkg`,双击。安装界面里有 **"Customize" 面板**,可以勾选
+**"LLM rerank backend (~390 MB download)"** 开启 LLM 后端
+(下载 Qwen 2.5 0.5B Q4 模型,装完自动切到 LLM)。
+
+### B. Homebrew(给 brew 用户)
+
+```bash
+brew install <owner>/dafeng/dafeng-wubi
+dafeng-cli setup                        # 基础(deterministic 后端)
+# 想要 LLM:
+python3 -m pip install --user 'huggingface_hub[cli]'
+hf download Qwen/Qwen2.5-0.5B-Instruct-GGUF \
+    --include qwen2.5-0.5b-instruct-q4_k_m.gguf \
+    --local-dir "$HOME/Library/Application Support/Dafeng/models/Qwen2.5-0.5B-Instruct-GGUF"
+dafeng-cli setup --backend llama_cpp
+```
+
+### C. 源码编译(给开发者 / 贡献者)
 
 ```bash
 git clone https://github.com/kevin/dafeng-wubi.git
 cd dafeng-wubi
-./install.sh
+./install.sh                            # 一条命令搞定
 ```
 
-`install.sh` 会:
-1. 装 build 工具(`cmake`、`ninja`、`libgit2`、`mlx-c`)
-2. 如果没装 Squirrel,`brew install --cask squirrel`(然后让你去
-   "系统设置 → 键盘 → 输入源" 启用一次,再回来重跑)
-3. 拉 [rime-wubi](https://github.com/rime/rime-wubi) 的 wubi86 词库
-4. 编译 dafeng
-5. 把 schema/Lua/dict 部署到 `~/Library/Rime/`
-6. 把 daemon 装成 launchd LaunchAgent,登录自启 + 崩了自重启
+`install.sh` 会装 brew 依赖、拉 wubi86 词库、编 dafeng、部署、装 launchd。
 
-完成后:
+### 任何方式装完后
+
 1. 菜单栏鼠须管 → 重新部署
 2. Ctrl + ` 选 "大风五笔 86"
-3. 开始打字
+3. 开始打字 — daemon 在后台学你打的词组,周末跑一次
+   `dafeng-cli learn` 把学到的词推回字典
 
 ## 日常用法
 

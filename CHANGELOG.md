@@ -40,6 +40,34 @@ deterministic) and the `-DDAFENG_ENABLE_LLAMA_CPP=ON` build. Two new
 factory-contract tests assert nullptr returns on missing/empty
 model paths regardless of build flag.
 
+### Added (Phase 3.5 — distribution)
+
+- **`.pkg` installer** (`packaging/macos/build-pkg.sh`):
+  productbuild-style with TWO selectable components:
+  - `dafeng-base.pkg` (required) — daemon, schemas, Lua bridge,
+    deterministic backend
+  - `dafeng-llm.pkg` (optional, **unchecked by default**) — when
+    user ticks the box, postinstall downloads Qwen 2.5 0.5B Q4
+    (~390 MB) from Hugging Face and reconfigures launchd to
+    `--backend llama_cpp`
+  - macOS Installer's "Customize" panel exposes the LLM checkbox
+    natively
+- **Homebrew formula** (`packaging/homebrew/dafeng-wubi.rb`):
+  HEAD + stable, builds from source with LLAMA_CPP=ON, registers a
+  `brew services` entry as alternative to LaunchAgent
+- **`dafeng-cli setup`** subcommand: probes `/usr/local/share/dafeng`
+  and `/opt/homebrew/share/dafeng` for the helper scripts shipped at
+  install time, runs deploy + launchagent. `--backend llama_cpp`
+  switches to LLM mode (errors actionably if model not present).
+- **GitHub Actions release pipeline** (`.github/workflows/release.yml`):
+  triggers on `v*` tag push; builds .pkg + .tar.gz on macos-14
+  (arm64) and macos-13 (x86_64); generates SHA256SUMS; extracts
+  matching CHANGELOG section as GitHub Release body.
+- **`docs/phase-3.5.md`**: documents all three install paths, the
+  customize-panel UX, Gatekeeper bypass, and what 3.5 does NOT
+  include (signing, dylib bundling, auto-update, Windows port).
+- README rewritten with three-channel install matrix.
+
 ## [0.1.0] — 2026-04-28
 
 First public-facing release. End-to-end working five笔 IME on macOS:

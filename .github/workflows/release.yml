@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to (re)build a release for (e.g. v0.1.0)'
+        required: true
+
+# Build the release artifacts on a Mac runner. Two artifacts per arch:
+#   - dafeng-wubi-<version>-<arch>.pkg       (double-click installer)
+#   - dafeng-wubi-<version>-<arch>.tar.gz    (binary tarball for brew + manual)
+# Both unsigned for the v0.1 series; sign + notarize is Phase 3.5.+
+# work that needs an Apple Developer ID secret in this repo.
+
+permissions:
+  contents: write   # creates / updates GitHub releases
+
+jobs:
+  build-macos:
+    name: macOS · ${{ matrix.arch }} · build + package
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14         # Apple Silicon
+            arch: arm64
+          - runner: macos-13         # Intel; xcode 14 era
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install build tools (brew)
+        run: |
+          brew update
+          brew install --quiet cmake ninja libgit2 llama.cpp
+
+      - name: Configure (LLAMA_CPP=ON)
+        run: |
+          cmake -B build-llama -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DDAFENG_ENABLE_LLAMA_CPP=ON \
+                -DDAFENG_ENABLE_GIT_SYNC=ON \
+                -DDAFENG_BUILD_TESTS=OFF \
+                -DDAFENG_BUILD_BENCHMARK=OFF
+
+      - name: Build
+        run: cmake --build build-llama -j
+
+      - name: Build .pkg
+        run: |
+          BUILD_DIR=build-llama bash packaging/macos/build-pkg.sh
+
+      - name: Build binary tarball
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          STAGE=$(mktemp -d)
+          mkdir -p "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}"/{bin,share/dafeng}
+          cp build-llama/src/daemon/dafeng-daemon "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/bin/"
+          cp build-llama/src/cli/dafeng-cli "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/bin/"
+          cp build-llama/src/plugin/dafeng_lua_bridge.so \
+             "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/share/dafeng/"
+          cp src/plugin/{rime,dafeng_filter,dafeng_rerank}.lua \
+             "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/share/dafeng/"
+          cp schemas/{wubi86_dafeng.schema.yaml,wubi86_dafeng.dict.yaml,dafeng_learned.dict.yaml} \
+             "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/share/dafeng/"
+          cp packaging/macos/{com.dafeng.daemon.plist,install_launchagent.sh,deploy.sh} \
+             "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/share/dafeng/"
+          cp install.sh CHANGELOG.md README.md LICENSE NOTICE \
+             "$STAGE/dafeng-wubi-$VERSION-${{ matrix.arch }}/"
+          tar -C "$STAGE" -czf "dist/dafeng-wubi-$VERSION-${{ matrix.arch }}.tar.gz" \
+              "dafeng-wubi-$VERSION-${{ matrix.arch }}"
+          ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dafeng-wubi-${{ matrix.arch }}
+          path: dist/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-macos
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Flatten + sha256
+        run: |
+          mkdir -p release/
+          find artifacts -type f \( -name '*.pkg' -o -name '*.tar.gz' \) \
+              -exec cp {} release/ \;
+          (cd release && shasum -a 256 *.pkg *.tar.gz > SHA256SUMS.txt)
+          ls -la release/
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          # Print the section between `## [VERSION]` and the next `## [`.
+          awk -v v="$VERSION" '
+            /^## \[/{
+              if (in_block) exit
+              if ($0 ~ "^## \\[" v "\\]") in_block=1
+              next
+            }
+            in_block { print }
+          ' CHANGELOG.md > release-notes.md
+          echo "notes_path=release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create / update Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${GITHUB_REF_NAME:-${{ inputs.tag }}}
+          gh release view "$TAG" >/dev/null 2>&1 \
+            && gh release upload "$TAG" release/* --clobber \
+            || gh release create "$TAG" release/* \
+                  --title "$TAG" \
+                  --notes-file release-notes.md
