@@ -12,6 +12,7 @@
 #include "dafeng/endpoint.h"
 #include "dafeng/logging.h"
 #include "dafeng/paths.h"
+#include "auto_learn.h"
 #include "history_store.h"
 #include "server.h"
 #include "services.h"
@@ -69,13 +70,19 @@ void InstallSignalHandlers() {
 void PrintUsage() {
   std::fprintf(stderr,
                "Usage: dafeng-daemon [options]\n"
-               "  --foreground         run in foreground (default)\n"
-               "  --addr <path>        socket path / pipe name\n"
-               "  --log-level <lvl>    debug | info | warn | error\n"
-               "  --backend <name>     mock | deterministic | mlx | llama_cpp\n"
-               "                       (default: deterministic)\n"
-               "  --model-path <path>  model file (MLX safetensors / GGUF)\n"
-               "  -h, --help           show this help\n");
+               "  --foreground          run in foreground (default)\n"
+               "  --addr <path>         socket path / pipe name\n"
+               "  --log-level <lvl>     debug | info | warn | error\n"
+               "  --backend <name>      mock | deterministic | mlx | llama_cpp\n"
+               "                        (default: deterministic)\n"
+               "  --model-path <path>   model file (MLX safetensors / GGUF)\n"
+               "  --auto-learn          background learning + RIME redeploy\n"
+               "                        when user is idle (default: on)\n"
+               "  --no-auto-learn       disable the above\n"
+               "  --rime-user-dir <p>   override ~/Library/Rime\n"
+               "  --wubi-dict <p>       wubi86.dict.yaml for canonical\n"
+               "                        phrase-code synthesis\n"
+               "  -h, --help            show this help\n");
 }
 
 enum class BackendKind { kMock, kDeterministic, kMLX, kLlamaCpp };
@@ -152,6 +159,12 @@ int main(int argc, char** argv) {
   dafeng::LogLevel level = dafeng::LogLevel::kInfo;
   BackendKind backend = BackendKind::kDeterministic;
   std::string model_path;
+  bool auto_learn = true;     // ON by default — user just types, never runs `learn`
+  std::string rime_user_dir;  // empty → resolve from $HOME at use-site
+  std::string wubi_dict;
+  int auto_learn_poll_s = 60;
+  int auto_learn_idle_s = 30;
+  int auto_learn_min_interval_s = 300;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -180,6 +193,28 @@ int main(int argc, char** argv) {
     }
     if (a == "--model-path" && i + 1 < argc) {
       model_path = argv[++i];
+      continue;
+    }
+    if (a == "--auto-learn") { auto_learn = true; continue; }
+    if (a == "--no-auto-learn") { auto_learn = false; continue; }
+    if (a == "--rime-user-dir" && i + 1 < argc) {
+      rime_user_dir = argv[++i];
+      continue;
+    }
+    if (a == "--wubi-dict" && i + 1 < argc) {
+      wubi_dict = argv[++i];
+      continue;
+    }
+    if (a == "--auto-learn-poll" && i + 1 < argc) {
+      auto_learn_poll_s = std::atoi(argv[++i]);
+      continue;
+    }
+    if (a == "--auto-learn-idle" && i + 1 < argc) {
+      auto_learn_idle_s = std::atoi(argv[++i]);
+      continue;
+    }
+    if (a == "--auto-learn-min-interval" && i + 1 < argc) {
+      auto_learn_min_interval_s = std::atoi(argv[++i]);
       continue;
     }
     std::fprintf(stderr, "unknown argument: %s\n", a.c_str());
@@ -216,9 +251,40 @@ int main(int argc, char** argv) {
   g_server = &server;
   InstallSignalHandlers();
 
+  // Resolve auto-learn paths. If --rime-user-dir / --wubi-dict were not
+  // passed, fall back to the platform default ($HOME/Library/Rime on Mac).
+  std::filesystem::path rime_dir = rime_user_dir.empty()
+      ? (std::filesystem::path(std::getenv("HOME") ? std::getenv("HOME") : ".")
+         / "Library" / "Rime")
+      : std::filesystem::path(rime_user_dir);
+  std::filesystem::path wubi_dict_path = wubi_dict.empty()
+      ? (rime_dir / "wubi86.dict.yaml")
+      : std::filesystem::path(wubi_dict);
+
+  // Spin up the auto-learner BEFORE entering the server loop so it's
+  // already running by the time the IME starts hitting us. It runs in
+  // its own thread and is bounded entirely by its poll_interval; the
+  // server's accept loop is not affected.
+  std::unique_ptr<dafeng::AutoLearnRunner> auto_learner;
+  if (auto_learn && history) {
+    dafeng::AutoLearnRunner::Config alc;
+    alc.data_dir = data_root;
+    alc.rime_user_dir = rime_dir;
+    alc.wubi_dict_path = wubi_dict_path;
+    alc.poll_interval = std::chrono::seconds(auto_learn_poll_s);
+    alc.idle_threshold = std::chrono::seconds(auto_learn_idle_s);
+    alc.min_round_interval = std::chrono::seconds(auto_learn_min_interval_s);
+    auto_learner = std::make_unique<dafeng::AutoLearnRunner>(history, alc);
+    auto_learner->Start();
+    DAFENG_LOG_INFO("auto-learn: enabled (poll=%ds, idle≥%ds, every≥%ds)",
+                    auto_learn_poll_s, auto_learn_idle_s,
+                    auto_learn_min_interval_s);
+  }
+
   DAFENG_LOG_INFO("dafeng-daemon ready on %s (backend=%s)", addr.c_str(),
                    BackendName(backend));
   server.Run();
+  if (auto_learner) auto_learner->Stop();
   DAFENG_LOG_INFO("dafeng-daemon exiting");
   g_server = nullptr;
   return 0;
