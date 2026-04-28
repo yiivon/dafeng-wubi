@@ -24,11 +24,14 @@ fi
 
 PLUGIN_BIN="$REPO_ROOT/$BUILD_DIR/src/plugin/dafeng_lua_bridge.so"
 SCHEMA_SRC="$REPO_ROOT/schemas/wubi86_dafeng.schema.yaml"
+COMBINED_DICT_SRC="$REPO_ROOT/schemas/wubi86_dafeng.dict.yaml"
+LEARNED_DICT_BOOTSTRAP="$REPO_ROOT/schemas/dafeng_learned.dict.yaml"
 FILTER_SRC="$REPO_ROOT/src/plugin/dafeng_filter.lua"
 RERANK_SRC="$REPO_ROOT/src/plugin/dafeng_rerank.lua"
 RIME_LUA_SRC="$REPO_ROOT/src/plugin/rime.lua"
 
-for f in "$PLUGIN_BIN" "$SCHEMA_SRC" "$FILTER_SRC" "$RERANK_SRC" "$RIME_LUA_SRC"; do
+for f in "$PLUGIN_BIN" "$SCHEMA_SRC" "$COMBINED_DICT_SRC" \
+          "$LEARNED_DICT_BOOTSTRAP" "$FILTER_SRC" "$RERANK_SRC" "$RIME_LUA_SRC"; do
   if [[ ! -f "$f" ]]; then
     echo "[error] missing artifact: $f" >&2
     echo "        Did you build first?  cmake --build $BUILD_DIR" >&2
@@ -48,10 +51,15 @@ cp -v "$PLUGIN_BIN" "$RIME_DIR/lua/dafeng_lua_bridge.so"
 # schemas does nothing.
 cp -v "$RIME_LUA_SRC" "$RIME_DIR/rime.lua"
 
-# The schema goes at the top of the user dir. Filename MUST equal
-# schema_id per RIME convention, otherwise deploy errors with
-# "missing input schema".
+# Schema + combined dict + bootstrap learned dict. The combined dict
+# imports both wubi86 (stock) and dafeng_learned (daemon-grown). The
+# bootstrap is empty — daemon overwrites when learning round runs.
 cp -v "$SCHEMA_SRC" "$RIME_DIR/wubi86_dafeng.schema.yaml"
+cp -v "$COMBINED_DICT_SRC" "$RIME_DIR/wubi86_dafeng.dict.yaml"
+# Bootstrap only if not already present — don't clobber daemon's writes.
+if [[ ! -f "$RIME_DIR/dafeng_learned.dict.yaml" ]]; then
+  cp -v "$LEARNED_DICT_BOOTSTRAP" "$RIME_DIR/dafeng_learned.dict.yaml"
+fi
 
 cat <<EOF
 

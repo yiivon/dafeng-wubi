@@ -45,12 +45,7 @@ engine:
     - fallback_segmentor
   translators:
     - punct_translator
-    # custom_phrase loads dafeng_learned.txt (TSV: text<TAB>code<TAB>weight).
-    # The daemon's learning round writes to this file every time it
-    # discovers new phrases (e.g. 弹窗 / xupw from split-typed singles).
-    # Listed BEFORE table_translator so learned phrases get higher rank.
     - reverse_lookup_translator
-    - custom_phrase
     - table_translator
   filters:
     - simplifier
@@ -59,14 +54,6 @@ engine:
     # The * means "this entry in rime.lua is a function-style filter";
     # @dafeng_options binds the schema's dafeng_options block to env.
     - lua_filter@*dafeng_filter@dafeng_options
-
-custom_phrase:
-  dictionary: ""
-  user_dict: dafeng_learned
-  db_class: stabledb
-  enable_completion: true
-  enable_sentence: false
-  initial_quality: 100  # high so learned phrases land near the top
 
 dafeng_options:
   enabled: true
@@ -78,7 +65,7 @@ dafeng_options:
   protect_top_n: 3
 
 translator:
-  dictionary: wubi86
+  dictionary: wubi86_dafeng    # combined: wubi86 + dafeng_learned
   enable_charset_filter: true
   enable_completion: true
   enable_sentence: true

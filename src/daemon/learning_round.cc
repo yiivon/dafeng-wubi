@@ -76,11 +76,14 @@ LearningRoundResult RunLearningRound(IHistoryStore& history,
       user_dict.Generate(words, userdata / "learned_words.yaml");
   result.wrote_ngram = ngram.Save(userdata / "personal_ngram.bin");
 
-  // Phase 2.4 follow-up: also write a librime custom_phrase TSV so the
-  // schema can pick up phrases like 弹窗 (xupw) on the next deploy.
-  // RIME looks for <user_dict>.txt at the root of the user dir.
+  // Write a RIME dict YAML so the schema's combined dict can import it
+  // via `import_tables`. This is the librime-standard way to inject
+  // user-learned phrases — works in any librime build (custom_phrase
+  // translator is a third-party plugin not available in Squirrel 1.1.x).
   if (!cfg.rime_user_dir.empty()) {
-    WriteCustomPhraseFile(words, cfg.rime_user_dir / "dafeng_learned.txt");
+    WriteRimeDictYaml(words,
+                       cfg.rime_user_dir / "dafeng_learned.dict.yaml",
+                       "dafeng_learned");
   }
 
   // Step 4: redeploy sentinel.

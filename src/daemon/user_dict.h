@@ -35,17 +35,18 @@ class IUserDictGenerator {
 
 std::unique_ptr<IUserDictGenerator> MakeYamlUserDictGenerator();
 
-// Writes an RFC-style TSV file in librime's `custom_phrase` format:
-//   text \t code \t weight
-// One line per entry. Entries with empty `code` are skipped (RIME's
-// custom_phrase needs the wubi key sequence to match against). Atomic
-// via tmp+rename. Returns false on filesystem error.
+// Writes a librime dict YAML file (text<TAB>code<TAB>weight rows under
+// a YAML header). RIME's standard `table_translator` consumes this via
+// the `dictionary:` field or `import_tables` chain. Entries with empty
+// `code` are skipped (RIME needs the key sequence). Atomic via tmp+rename.
+// Returns false on filesystem error.
 //
-// To consume: schema declares `custom_phrase` translator, points
-// `custom_phrase/user_dict` at the basename of this file (without the
-// .txt extension); RIME loads it on deploy.
-bool WriteCustomPhraseFile(const std::vector<DiscoveredWord>& words,
-                            const std::filesystem::path& out_path);
+// `dict_name` is the dict's identifier — must match the filename's base
+// (e.g. dafeng_learned.dict.yaml -> "dafeng_learned"). RIME compiles
+// this into <dict_name>.table.bin at deploy.
+bool WriteRimeDictYaml(const std::vector<DiscoveredWord>& words,
+                        const std::filesystem::path& out_path,
+                        const std::string& dict_name);
 
 // Touch a sentinel file at `data_dir/redeploy_requested` to flag a
 // pending RIME redeploy. The macOS Squirrel daemon doesn't poll this;

@@ -1,0 +1,19 @@
+# Bootstrap empty dict — overwritten by `dafeng-cli learn` whenever it
+# discovers new phrases. Lives in the user's RIME dir so the daemon's
+# write doesn't touch the project tree.
+#
+# The schema's combined dict (wubi86_dafeng.dict.yaml) imports this
+# file. With no entries it's a no-op; once entries land, `xupw` -> 弹窗
+# (or whatever the user typed in pieces) appears as a regular wubi
+# candidate.
+
+---
+name: dafeng_learned
+version: "0.0"
+sort: by_weight
+use_preset_vocabulary: false
+columns:
+  - text
+  - code
+  - weight
+...
