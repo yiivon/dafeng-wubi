@@ -47,7 +47,10 @@ engine:
   filters:
     - simplifier
     - uniquifier
-    - lua_filter@*dafeng_filter@dafeng_options
+    # Plain lua_filter@<name> form. librime-lua auto-detects the
+    # table-style module (init/fini/func). Schema's dafeng_options block
+    # is still read by init() via env.engine.schema.config:get_*.
+    - lua_filter@dafeng_filter
 
 dafeng_options:
   enabled: true

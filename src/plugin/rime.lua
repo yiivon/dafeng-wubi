@@ -8,11 +8,21 @@
 --      librime-lua; cpath for .so/.dll is not.)
 --   2. Export the filter modules that schemas reference, by name.
 
+-- Diagnostic: a log line at parse time tells us whether librime-lua even
+-- saw rime.lua. If you see this in rime.squirrel.INFO, the entry point
+-- is wired up.
+if log and log.info then
+  log.info("dafeng/rime.lua: parsed at " .. tostring(os.time()))
+end
+
 local home = os.getenv("HOME")
 if home and home ~= "" then
   -- Mac default. Windows port will need a separate branch later.
   local lua_dir = home .. "/Library/Rime/lua"
   package.cpath = lua_dir .. "/?.so;" .. package.cpath
+  if log and log.info then
+    log.info("dafeng/rime.lua: cpath=" .. package.cpath)
+  end
 end
 
 -- Defensive load: if dafeng_filter fails to require (Lua bridge .so
