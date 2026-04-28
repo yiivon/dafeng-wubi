@@ -13,6 +13,23 @@
 
 local M = {}
 
+-- One-line append to ~/Library/Logs/dafeng-filter.log on every daemon
+-- fallback (timeout / nil / pcall error). Lets us correlate "the IME
+-- felt slow at 16:42" against actual daemon-unavailable events without
+-- flipping debug flags. Cheap enough that we don't bother rate-limiting.
+local function log_fallback(reason, code, n)
+  local home = os.getenv("HOME")
+  if not home or home == "" then return end
+  local path = home .. "/Library/Logs/dafeng-filter.log"
+  local f = io.open(path, "a")
+  if not f then return end
+  -- ISO-ish timestamp; second precision is fine for human correlation.
+  local ts = os.date("%Y-%m-%dT%H:%M:%S")
+  f:write(string.format("[%s] code=%s n=%d reason=%s\n",
+                        ts, code or "", n or 0, reason or ""))
+  f:close()
+end
+
 -- Returns a list of 1-based indices into `buffered`, in the order the
 -- librime filter should yield them.
 --
@@ -51,7 +68,11 @@ function M.compute_order(buffered, code, ctx, app, cand_texts, options, client)
     local ok_r, result = pcall(function()
       return client:rerank(code, ctx, sub, app or "", options.timeout_ms or 30)
     end)
-    if not ok_r then result = nil end
+    local pcall_err = nil
+    if not ok_r then
+      pcall_err = tostring(result)
+      result = nil
+    end
     if result and result.indices and #result.indices > 0 then
       local emitted = {}
       for _, lua_sub_idx in ipairs(result.indices) do
@@ -67,6 +88,16 @@ function M.compute_order(buffered, code, ctx, app, cand_texts, options, client)
       end
     else
       -- Daemon timeout / failure / nil: original order for the rerank slice.
+      -- Log so a user reporting "felt slow at 16:42" gives us a timestamp
+      -- to correlate against (instead of silently degrading to RIME default).
+      local n_sub = rerank_end - rerank_start + 1
+      if pcall_err then
+        log_fallback("err: " .. pcall_err, code, n_sub)
+      elseif result == nil then
+        log_fallback("nil (daemon timeout/unreachable)", code, n_sub)
+      else
+        log_fallback("empty indices", code, n_sub)
+      end
       for i = rerank_start, rerank_end do out[#out + 1] = i end
     end
   end
