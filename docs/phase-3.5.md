@@ -150,16 +150,58 @@ errors with a download instruction if the model is missing.
 
 Manual re-trigger via the `workflow_dispatch` event in the Actions tab.
 
+## Self-contained dylib bundling (Phase 3.5+)
+
+The .pkg is now **truly self-contained** — it works on machines that
+have *no* Homebrew installed. Mechanics:
+
+1. `dylibbundler --bundle-deps --install-path @executable_path/../lib/dafeng/`
+   walks the dep graph from `dafeng-daemon` and `dafeng-cli`, copies
+   every non-system dylib (libllama, libggml, libggml-base, libgit2,
+   libssl/libcrypto, libssh2, libllhttp) into `$ROOT/usr/local/lib/dafeng/`,
+   and rewrites both the binaries' references *and* every transitive
+   library's references to `@executable_path/../lib/dafeng/...`.
+2. ggml's runtime backend plugins (`libggml-{cpu-*,metal,blas}.so`)
+   are loaded via `dlopen`, which `dylibbundler` doesn't see — so we
+   also copy them from `$(brew --prefix ggml)/libexec/`, give each
+   `@rpath` install-name, and `add_rpath @loader_path` so they find
+   their bundled `libggml-base` sibling.
+3. The ggml plugins reference `@rpath/libggml-base.0.dylib`
+   (major-version soname), but brew ships
+   `libggml-base.0.10.0.dylib`. We add a relative symlink
+   `libggml-base.0.dylib → libggml-base.0.10.0.dylib` (and the same
+   for `libggml.0.dylib`) so the plugin's `@rpath` lookup succeeds.
+4. ggml-cpu plugins also link `/opt/homebrew/opt/libomp/lib/libomp.dylib`
+   absolute — we bundle a copy of `libomp.dylib`, set its install-name
+   to `@rpath/libomp.dylib`, and `install_name_tool -change` the
+   absolute reference inside each plugin to `@rpath/libomp.dylib`.
+5. **Re-sign every modified Mach-O** with `codesign --force --sign -`
+   (ad-hoc). On Apple Silicon, dyld sends SIGKILL to anything whose
+   ad-hoc signature became invalid after `install_name_tool` — a
+   silent crash that looks like a startup failure with empty stderr.
+   This step is mandatory.
+6. The daemon's `InitBackendOnce` probes
+   `<exe-dir>/../lib/dafeng/` (computed via `_NSGetExecutablePath`)
+   *first*, before brew's canonical paths. So the bundle "wins" the
+   ggml registration race even when brew is also present, and the
+   daemon works whether installed at `/`, under `/opt/homebrew`, or
+   extracted to `/tmp/foo` for inspection.
+
+Verified end-to-end: extract the .pkg to `/tmp/dafeng-test-install/`,
+run `dafeng-daemon --backend llama_cpp --model-path …` from there, and
+the log shows the bundled plugins being loaded from `/private/tmp/…`,
+the Metal kernels compile against Apple M4 Max, and rerank requests
+return real candidate orderings in ~12-19 ms (cold start).
+
+Final `.pkg` size: ~5.2 MB compressed.
+
 ## What 3.5 does NOT include
 
 - **Apple Developer ID signing + notarization.** The .pkg works
-  unsigned (with the Gatekeeper bypass) but distributing through the
-  App Store or to security-strict users needs signing. Adds an
-  ~$99/year cost + secret management in CI.
-- **Bundled dylibs.** The .pkg currently relies on the user having
-  brew packages (libllama, libgit2) installed. A truly self-contained
-  .pkg would `install_name_tool` the binary's references and bundle
-  the .dylibs. Possible but tedious; defer until first user complains.
+  ad-hoc-signed (with the Gatekeeper right-click → Open bypass) but
+  distributing through the App Store or to security-strict users
+  needs Developer ID signing. Adds an ~$99/year cost + secret
+  management in CI.
 - **Auto-update.** `Sparkle.framework` integration would let the
   installed daemon check for new versions. Phase 3.5.+ if usage grows.
 - **Windows port.** Phase 3.3.

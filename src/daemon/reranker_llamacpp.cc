@@ -24,6 +24,10 @@
 #include <ggml-backend.h>
 #include <llama.h>
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #include "dafeng/logging.h"
 #include "services.h"
 
@@ -220,19 +224,49 @@ class LlamaCppReranker final : public IRerankService {
     return out;
   }
 
+  // Resolve a directory adjacent to the running daemon binary:
+  //   <exe-dir>/../lib/dafeng/
+  // This is where the .pkg installer drops bundled ggml plugins, so
+  // probing it first means a self-contained install (no brew on the
+  // target machine) finds its own plugins even when extracted to a
+  // non-canonical prefix like /tmp/foo.
+  static std::string SiblingLibDafengDir() {
+    namespace fs = std::filesystem;
+#if defined(__APPLE__)
+    char buf[1024];
+    uint32_t sz = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &sz) != 0) return {};
+#else
+    return {};  // other platforms: caller falls through to candidate list
+#endif
+    std::error_code ec;
+    fs::path exe = fs::canonical(fs::path(buf), ec);
+    if (ec || exe.empty()) return {};
+    return (exe.parent_path().parent_path() / "lib" / "dafeng").string();
+  }
+
   static void InitBackendOnce() {
     static std::once_flag flag;
     std::call_once(flag, [] {
-      // ggml's backend search: discovers libggml-{cpu,metal,blas}.so from
-      // standard paths. MUST happen before llama_model_load_from_file or
-      // you get "no backends are loaded". The default search uses
-      // DYLD_LIBRARY_PATH on Mac, which a launchd-spawned daemon won't
-      // have set. So after the default attempt, we also probe brew's
-      // canonical ggml libexec paths — covers all common installs.
+      // Probe our own bundle FIRST so a self-contained .pkg install at
+      // any prefix (including /tmp/extracted) loads the bundled plugins
+      // before the system fallback finds (or fails to find) brew's.
+      const std::string sibling = SiblingLibDafengDir();
+      if (!sibling.empty()) {
+        ggml_backend_load_all_from_path(sibling.c_str());
+      }
+
+      // ggml's default backend search: discovers libggml-{cpu,metal,blas}.so
+      // from standard paths via DYLD_*_PATH. MUST run before any model
+      // load or you get "no backends are loaded". A launchd-spawned daemon
+      // won't have DYLD set, so for system installs we also probe brew's
+      // canonical libexec paths below.
       ggml_backend_load_all();
       const char* candidate_paths[] = {
-          "/opt/homebrew/opt/ggml/libexec",      // Apple Silicon brew
-          "/usr/local/opt/ggml/libexec",          // Intel brew
+          "/usr/local/lib/dafeng",                // .pkg installed at /
+          "/opt/homebrew/lib/dafeng",             // brew install (bundled)
+          "/opt/homebrew/opt/ggml/libexec",       // Apple Silicon brew (system)
+          "/usr/local/opt/ggml/libexec",          // Intel brew (system)
           "/opt/homebrew/lib/ggml",               // alternate layout
           "/usr/local/lib/ggml",
       };

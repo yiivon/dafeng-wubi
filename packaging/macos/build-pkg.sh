@@ -60,6 +60,104 @@ mkdir -p "$BASE_SCRIPTS"
 cp "$BUILD_DIR/src/daemon/dafeng-daemon" "$BASE_ROOT/usr/local/bin/"
 cp "$BUILD_DIR/src/cli/dafeng-cli" "$BASE_ROOT/usr/local/bin/"
 
+# ---- bundle non-system dylibs (libllama, libggml, libgit2, ssh, openssl)
+# We use dylibbundler to walk the dep graph from the daemon, copy
+# everything to /usr/local/lib/dafeng/, and fix install names. Then we
+# also copy ggml's runtime backend plugins (libggml-cpu-*.so,
+# libggml-metal.so, etc.) which dlopen at runtime — dylibbundler
+# doesn't see those. The daemon's reranker_llamacpp.cc probes
+# /usr/local/lib/dafeng/ as a candidate for ggml_backend_load_all_from_path,
+# so plugins land in the same dir as the dylibs they depend on.
+echo "» bundling dylibs via dylibbundler"
+DAFENG_LIBDIR="$BASE_ROOT/usr/local/lib/dafeng"
+mkdir -p "$DAFENG_LIBDIR"
+
+if ! command -v dylibbundler >/dev/null 2>&1; then
+  echo "[warn] dylibbundler not installed — .pkg will require brew on target."
+  echo "       brew install dylibbundler"
+else
+  # `--no-codesign` because we don't have an Apple Developer ID yet;
+  # the .pkg itself will run unsigned. The cli + daemon binaries are
+  # both fixed; --bundle-deps walks the transitive graph.
+  dylibbundler \
+      --fix-file "$BASE_ROOT/usr/local/bin/dafeng-daemon" \
+      --fix-file "$BASE_ROOT/usr/local/bin/dafeng-cli" \
+      --bundle-deps \
+      --dest-dir "$DAFENG_LIBDIR" \
+      --install-path "@executable_path/../lib/dafeng/" \
+      --create-dir \
+      --overwrite-files \
+      --no-codesign 2>&1 | tail -12
+
+  # ggml runtime plugins (loaded via dlopen, not linked).
+  GGML_LIBEXEC="$(brew --prefix ggml)/libexec"
+  if [[ -d "$GGML_LIBEXEC" ]]; then
+    for plugin in "$GGML_LIBEXEC"/libggml-*.so; do
+      [[ -f "$plugin" ]] || continue
+      cp "$plugin" "$DAFENG_LIBDIR/"
+      base="$(basename "$plugin")"
+      chmod u+w "$DAFENG_LIBDIR/$base"
+      install_name_tool -id "@rpath/$base" "$DAFENG_LIBDIR/$base"
+      # Plugins reference @rpath/libggml-base.0.dylib already. We want
+      # @rpath to resolve to the plugin's own directory so it finds the
+      # bundled libggml-base sibling.
+      install_name_tool -add_rpath "@loader_path" "$DAFENG_LIBDIR/$base" 2>/dev/null || true
+      # ggml-cpu-*.so links absolute /opt/homebrew/opt/libomp/lib/libomp.dylib.
+      # Rewrite to @rpath/libomp.dylib so the bundled copy is used.
+      install_name_tool -change /opt/homebrew/opt/libomp/lib/libomp.dylib \
+                                "@rpath/libomp.dylib" "$DAFENG_LIBDIR/$base" 2>/dev/null || true
+      install_name_tool -change /usr/local/opt/libomp/lib/libomp.dylib \
+                                "@rpath/libomp.dylib" "$DAFENG_LIBDIR/$base" 2>/dev/null || true
+    done
+    echo "  ggml plugins bundled: $(ls "$DAFENG_LIBDIR"/libggml-*.so 2>/dev/null | wc -l | tr -d ' ')"
+  fi
+
+  # Bundle libomp.dylib (used by ggml-cpu plugins via OpenMP). Brew installs
+  # it under libomp/lib; we copy the dylib only and rewrite its install_name.
+  for omp_prefix in /opt/homebrew/opt/libomp /usr/local/opt/libomp; do
+    if [[ -f "$omp_prefix/lib/libomp.dylib" ]]; then
+      cp "$omp_prefix/lib/libomp.dylib" "$DAFENG_LIBDIR/libomp.dylib"
+      chmod u+w "$DAFENG_LIBDIR/libomp.dylib"
+      install_name_tool -id "@rpath/libomp.dylib" "$DAFENG_LIBDIR/libomp.dylib"
+      echo "  bundled libomp.dylib from $omp_prefix"
+      break
+    fi
+  done
+
+  # ggml plugins reference @rpath/libggml-base.0.dylib (major-soname),
+  # but brew ships libggml-base.0.10.0.dylib. dylibbundler copied the
+  # versioned name; create the major-version alias the plugins look for.
+  # Same for libggml.0.dylib in case anything wants the unversioned soname.
+  (
+    cd "$DAFENG_LIBDIR"
+    for full in libggml-base.0.*.dylib libggml.0.*.dylib; do
+      [[ -f "$full" ]] || continue
+      # major version = "0"
+      short="${full%%.*}.0.dylib"   # libggml-base.0.dylib / libggml.0.dylib
+      [[ -e "$short" ]] || ln -s "$full" "$short"
+    done
+  )
+
+  # Re-sign every Mach-O we modified. install_name_tool invalidates the
+  # original ad-hoc signature, and on Apple Silicon dyld will SIGKILL
+  # (exit 137) anything that fails signature validation. Use ad-hoc
+  # signing (`-`); a real Developer ID would replace this in CI.
+  echo "» re-signing modified Mach-O binaries (ad-hoc)"
+  codesign --force --sign - "$BASE_ROOT/usr/local/bin/dafeng-daemon"
+  codesign --force --sign - "$BASE_ROOT/usr/local/bin/dafeng-cli"
+  for lib in "$DAFENG_LIBDIR"/*.dylib "$DAFENG_LIBDIR"/*.so; do
+    [[ -f "$lib" && ! -L "$lib" ]] || continue
+    codesign --force --sign - "$lib" 2>/dev/null || true
+  done
+
+  # Quick sanity: print our binary's deps after rewriting — should now
+  # all be @rpath/... or system libs.
+  echo "  daemon deps after bundling:"
+  otool -L "$BASE_ROOT/usr/local/bin/dafeng-daemon" \
+      | awk 'NR>1 && $1 !~ /^\/(usr\/lib|System)/' \
+      | sed 's/^/    /'
+fi
+
 cp "$BUILD_DIR/src/plugin/dafeng_lua_bridge.so" "$BASE_ROOT/usr/local/share/dafeng/"
 cp "$REPO_ROOT/src/plugin/rime.lua" "$BASE_ROOT/usr/local/share/dafeng/"
 cp "$REPO_ROOT/src/plugin/dafeng_filter.lua" "$BASE_ROOT/usr/local/share/dafeng/"
