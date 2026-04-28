@@ -3,7 +3,7 @@
 -- DESIGN §3). The actual ordering math lives in dafeng_rerank.compute_order
 -- which is pure-Lua and unit-tested independently of librime.
 --
--- Schema configuration (wubi.schema.yaml):
+-- Schema configuration (wubi86_dafeng.schema.yaml):
 --   dafeng_options:
 --     enabled: true
 --     timeout_ms: 30
@@ -24,6 +24,34 @@ local function trim_context(s, max_chars)
   return s
 end
 
+-- Hook the commit_notifier so we can ship every committed text to the
+-- daemon. Without this, history.db never grows and new-word discovery
+-- has nothing to chew on. Wrapped in pcall — librime-lua API surface
+-- varies across versions and we never want a missing method to take
+-- down the IME.
+local function attach_commit_hook(env)
+  if env._dafeng_commit_hook_attached then return end
+  local notifier = env.engine.context.commit_notifier
+  if not notifier or not notifier.connect then return end
+  local ok = pcall(function()
+    notifier:connect(function(ctx)
+      pcall(function()
+        local committed = ctx:get_commit_text() or ""
+        local code = ctx.input or ""
+        local hist = ctx.commit_history
+        local before = ""
+        if hist and hist.repr then
+          before = trim_context(hist:repr() or "", env.options.context_chars)
+        end
+        if committed ~= "" and env.client then
+          env.client:record_commit(code, committed, before)
+        end
+      end)
+    end)
+  end)
+  if ok then env._dafeng_commit_hook_attached = true end
+end
+
 function M.init(env)
   env.client = nil
   env.options = {
@@ -35,11 +63,15 @@ function M.init(env)
   }
 
   if not ok_bridge or not dafeng then
-    log.warning("dafeng_filter: dafeng_lua_bridge not loadable; passthrough only")
+    if log and log.warning then
+      log.warning("dafeng_filter: dafeng_lua_bridge not loadable; passthrough")
+    end
     return
   end
   if not ok_rerank or not dafeng_rerank then
-    log.warning("dafeng_filter: dafeng_rerank not loadable; passthrough only")
+    if log and log.warning then
+      log.warning("dafeng_filter: dafeng_rerank not loadable; passthrough")
+    end
     return
   end
 
@@ -59,8 +91,11 @@ function M.init(env)
   local c, err = dafeng.client_create(nil)
   if c then
     env.client = c
+    attach_commit_hook(env)
   else
-    log.warning("dafeng_filter: client_create failed: " .. tostring(err))
+    if log and log.warning then
+      log.warning("dafeng_filter: client_create failed: " .. tostring(err))
+    end
     env.options.enabled = false
   end
 end
@@ -80,25 +115,32 @@ function M.func(translation, env)
     return
   end
 
-  -- Build rerank inputs.
+  -- librime-lua's exposed APIs vary across versions; current_segment() is
+  -- one method-style call that doesn't exist in Squirrel 1.1.x's bundled
+  -- librime-lua. Use env.engine.context.input directly — for wubi this is
+  -- 1-4 letters, the whole input IS the code.
   local code = ""
-  local seg = env.engine.context:current_segment()
-  if seg then
-    code = env.engine.context.input:sub(seg.start + 1, seg._end) or ""
-  end
+  pcall(function() code = env.engine.context.input or "" end)
 
   local ctx = ""
-  local hist = env.engine.context.commit_history
-  if hist and hist.repr then
-    ctx = trim_context(hist:repr() or "", env.options.context_chars)
-  end
+  pcall(function()
+    local hist = env.engine.context.commit_history
+    if hist and hist.repr then
+      ctx = trim_context(hist:repr() or "", env.options.context_chars)
+    end
+  end)
 
   local cand_texts = {}
   for i, c in ipairs(buffered) do cand_texts[i] = c.text end
 
-  local order = dafeng_rerank.compute_order(buffered, code, ctx, "",
-                                             cand_texts, env.options,
-                                             env.client)
+  local ok_co, order_or_err = pcall(dafeng_rerank.compute_order,
+                                      buffered, code, ctx, "",
+                                      cand_texts, env.options, env.client)
+  if not ok_co then
+    for _, c in ipairs(buffered) do yield(c) end
+    return
+  end
+  local order = order_or_err
 
   for _, idx in ipairs(order) do
     yield(buffered[idx])

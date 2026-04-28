@@ -8,21 +8,10 @@
 --      librime-lua; cpath for .so/.dll is not.)
 --   2. Export the filter modules that schemas reference, by name.
 
--- Diagnostic: a log line at parse time tells us whether librime-lua even
--- saw rime.lua. If you see this in rime.squirrel.INFO, the entry point
--- is wired up.
-if log and log.info then
-  log.info("dafeng/rime.lua: parsed at " .. tostring(os.time()))
-end
-
 local home = os.getenv("HOME")
 if home and home ~= "" then
   -- Mac default. Windows port will need a separate branch later.
-  local lua_dir = home .. "/Library/Rime/lua"
-  package.cpath = lua_dir .. "/?.so;" .. package.cpath
-  if log and log.info then
-    log.info("dafeng/rime.lua: cpath=" .. package.cpath)
-  end
+  package.cpath = home .. "/Library/Rime/lua/?.so;" .. package.cpath
 end
 
 -- Defensive load: if dafeng_filter fails to require (Lua bridge .so
@@ -33,19 +22,27 @@ local function passthrough(translation, env)
   for cand in translation:iter() do yield(cand) end
 end
 
-local function load_filter()
-  local ok, m = pcall(require, "dafeng_filter")
-  if ok and type(m) == "table" then return m end
+local ok, mod = pcall(require, "dafeng_filter")
+if not ok or type(mod) ~= "table" then
   if log and log.warning then
-    log.warning("rime.lua: dafeng_filter not loadable: " .. tostring(m))
+    log.warning("rime.lua: dafeng_filter not loadable: " .. tostring(mod))
   end
-  return {
-    init = function(env) end,
-    fini = function(env) end,
-    func = passthrough,
-  }
+  mod = nil
+end
+
+-- librime-lua in Squirrel 1.1.x only honors function-style filters —
+-- {init, fini, func} module tables parse but the lifecycle hooks never
+-- fire. Wrap our module: lazy-init on first call, then dispatch to
+-- module's func. env is per-session so init runs once per IME context.
+local function dafeng_filter(translation, env)
+  if mod == nil then return passthrough(translation, env) end
+  if not env._dafeng_initialized then
+    if mod.init then mod.init(env) end
+    env._dafeng_initialized = true
+  end
+  return mod.func(translation, env)
 end
 
 return {
-  dafeng_filter = load_filter(),
+  dafeng_filter = dafeng_filter,
 }

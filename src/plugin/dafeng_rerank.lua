@@ -48,8 +48,10 @@ function M.compute_order(buffered, code, ctx, app, cand_texts, options, client)
     for i = rerank_start, rerank_end do
       sub[i - rerank_start + 1] = cand_texts[i] or ""
     end
-    local result = client:rerank(code, ctx, sub, app or "",
-                                  options.timeout_ms or 30)
+    local ok_r, result = pcall(function()
+      return client:rerank(code, ctx, sub, app or "", options.timeout_ms or 30)
+    end)
+    if not ok_r then result = nil end
     if result and result.indices and #result.indices > 0 then
       local emitted = {}
       for _, lua_sub_idx in ipairs(result.indices) do

@@ -21,9 +21,11 @@ switches:
   - name: simplification
     states: [ 漢字, 汉字 ]
     reset: 1
-  - name: dafeng_smart
-    reset: 1
-    states: [ 单纯五笔, 智能五笔 ]
+  # NB: a `dafeng_smart` toggle was here in the Phase 2 draft but it was
+  # never wired to anything (the daemon decides; the filter has no
+  # disable-from-schema path yet). Removed to keep the schema's switch
+  # menu clean. If/when we want a kill switch the hook is in the filter's
+  # init() — see env.engine.schema.config:get_bool.
 
 engine:
   processors:
@@ -43,14 +45,28 @@ engine:
     - fallback_segmentor
   translators:
     - punct_translator
+    # custom_phrase loads dafeng_learned.txt (TSV: text<TAB>code<TAB>weight).
+    # The daemon's learning round writes to this file every time it
+    # discovers new phrases (e.g. 弹窗 / xupw from split-typed singles).
+    # Listed BEFORE table_translator so learned phrases get higher rank.
+    - reverse_lookup_translator
+    - custom_phrase
     - table_translator
   filters:
     - simplifier
     - uniquifier
-    # Plain lua_filter@<name> form. librime-lua auto-detects the
-    # table-style module (init/fini/func). Schema's dafeng_options block
-    # is still read by init() via env.engine.schema.config:get_*.
-    - lua_filter@dafeng_filter
+    # librime-lua syntax: `lua_filter@*<name>@<env_namespace>`.
+    # The * means "this entry in rime.lua is a function-style filter";
+    # @dafeng_options binds the schema's dafeng_options block to env.
+    - lua_filter@*dafeng_filter@dafeng_options
+
+custom_phrase:
+  dictionary: ""
+  user_dict: dafeng_learned
+  db_class: stabledb
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 100  # high so learned phrases land near the top
 
 dafeng_options:
   enabled: true
