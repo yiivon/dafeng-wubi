@@ -15,8 +15,18 @@ DAFENG_API LogLevel GetLogLevel();
 // callsite.
 DAFENG_API void SetLogEnabled(bool enabled);
 
+// printf-format checking is GCC/Clang only; MSVC has no equivalent at the
+// function-decl level (the closest is sal.h's _Printf_format_string_, but
+// that goes on a parameter and only fires inside MS analysis tools).
+#if defined(__GNUC__) || defined(__clang__)
+#define DAFENG_PRINTF_LIKE(fmt_idx, vararg_idx) \
+  __attribute__((format(printf, fmt_idx, vararg_idx)))
+#else
+#define DAFENG_PRINTF_LIKE(fmt_idx, vararg_idx)
+#endif
+
 DAFENG_API void Log(LogLevel level, const char* file, int line, const char* fmt,
-                    ...) __attribute__((format(printf, 4, 5)));
+                    ...) DAFENG_PRINTF_LIKE(4, 5);
 
 }  // namespace dafeng
 
