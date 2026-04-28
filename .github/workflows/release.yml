@@ -21,14 +21,17 @@ permissions:
 
 jobs:
   build-macos:
+    # arm64 only for v0.1. Intel (macos-13) free-tier runners queue for
+    # tens of minutes and routinely block the publish step from firing.
+    # Apple Silicon coverage handles the practical-majority install
+    # population today; an Intel build can land later when we either
+    # have paid runners or move to a self-hosted Intel mac.
     name: macOS · ${{ matrix.arch }} · build + package
     strategy:
       matrix:
         include:
           - runner: macos-14         # Apple Silicon
             arch: arm64
-          - runner: macos-13         # Intel; xcode 14 era
-            arch: x86_64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4

@@ -202,6 +202,13 @@ Final `.pkg` size: ~5.2 MB compressed.
   distributing through the App Store or to security-strict users
   needs Developer ID signing. Adds an ~$99/year cost + secret
   management in CI.
+- **Intel (x86_64) `.pkg`.** v0.1.0 ships arm64 only. The release
+  matrix used to include `macos-13` for Intel, but GH Actions free
+  tier's `macos-13` queue is unreliable enough that the
+  `publish-release` step routinely starved waiting for a runner.
+  Apple Silicon coverage handles the practical majority of installs
+  today; we can re-enable Intel when we have paid runners or a
+  self-hosted Intel mac.
 - **Auto-update.** `Sparkle.framework` integration would let the
   installed daemon check for new versions. Phase 3.5.+ if usage grows.
 - **Windows port.** Phase 3.3.
