@@ -41,6 +41,14 @@ if [[ ! -x "$BUILD_DIR/src/daemon/dafeng-daemon" ]]; then
   exit 1
 fi
 
+# The Inspector .app is built separately via apps/inspector/build-app.sh.
+# Build it on demand if missing — keeps the .pkg always-fresh.
+INSPECTOR_APP="$DIST_DIR/Dafeng Inspector.app"
+if [[ ! -d "$INSPECTOR_APP" ]]; then
+  echo "» (re)building Dafeng Inspector.app"
+  bash "$REPO_ROOT/apps/inspector/build-app.sh" >/dev/null
+fi
+
 WORK="$(mktemp -d /tmp/dafeng-pkg.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -59,6 +67,13 @@ mkdir -p "$BASE_SCRIPTS"
 
 cp "$BUILD_DIR/src/daemon/dafeng-daemon" "$BASE_ROOT/usr/local/bin/"
 cp "$BUILD_DIR/src/cli/dafeng-cli" "$BASE_ROOT/usr/local/bin/"
+
+# Phase 3.4: ship the SwiftUI inspector under /Applications.
+# productbuild's BOM walks the staging tree, so the .app's bundle
+# structure is preserved as-is on installation.
+APPLICATIONS_DIR="$BASE_ROOT/Applications"
+mkdir -p "$APPLICATIONS_DIR"
+cp -R "$INSPECTOR_APP" "$APPLICATIONS_DIR/"
 
 # ---- bundle non-system dylibs (libllama, libggml, libgit2, ssh, openssl)
 # We use dylibbundler to walk the dep graph from the daemon, copy

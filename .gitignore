@@ -61,3 +61,8 @@ history.db-*
 # Local user overrides
 .env
 .env.local
+
+# Swift Package Manager
+.build/
+Package.resolved
+.swiftpm/

@@ -123,6 +123,9 @@ Lua hook → daemon 写 history.db (本机 SQLite, 0600)
 - [docs/phase-2.1-verification.md](docs/phase-2.1-verification.md) — IPC 骨架验证
 - [docs/phase-2.2.md](docs/phase-2.2.md) — Reranker 抽象 + MLX 接入
 - [docs/phase-2.4.md](docs/phase-2.4.md) — 学习子系统
+- [docs/phase-3.3.md](docs/phase-3.3.md) — Windows port scaffold(Phase 3.3)
+- [docs/phase-3.4.md](docs/phase-3.4.md) — SwiftUI 监控面板(Phase 3.4)
+- [docs/phase-3.5.md](docs/phase-3.5.md) — 三通道分发 + self-contained pkg
 - [CLAUDE.md](CLAUDE.md) — 项目宪法(给协作者看的硬约束)
 
 ## 性能
@@ -150,7 +153,9 @@ ctest                    : 144 / 144 pass in 1.7 s
   per-user pipe 命名;daemon main `SetConsoleCtrlHandler`。
   CI (`windows-latest`) 已加,编译验证通过。还差:Weasel 集成、NSIS
   安装包、Scheduled Task 自启、端到端真机回归。详见 [docs/phase-3.3.md](docs/phase-3.3.md)。
-- 📋 **Phase 3.4** —— GUI 监控/编辑面板(SwiftUI)。
+- ✅ **Phase 3.4 完成** —— SwiftUI 监控面板 [大风五笔检查器](apps/inspector/)
+  随 `.pkg` 装到 `/Applications/Dafeng Inspector.app`,三个 tab:状态、
+  输入历史、已学到的词(含删除 + 重新部署提示)。详见 [docs/phase-3.4.md](docs/phase-3.4.md)。
 
 ## 贡献
 
