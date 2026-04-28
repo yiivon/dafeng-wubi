@@ -4,6 +4,15 @@ All notable changes to dafeng-wubi follow [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+(empty)
+
+## [0.1.0] — 2026-04-28
+
+First public-facing release. End-to-end working 五笔 IME on macOS with
+LLM-backed reranking, learning, and a SwiftUI inspector. Phase 2 (engine)
++ Phase 3.1 (packaging) + 3.2 (real LLM) + 3.3 (Windows scaffold) + 3.4
+(GUI) + 3.5+ (self-contained pkg) all in one tag.
+
 ### Added (Phase 3.2 — real LLM)
 
 - **llama.cpp backend** for the reranker (`reranker_llamacpp.cc` /
@@ -64,16 +73,72 @@ model paths regardless of build flag.
   (arm64) and macos-13 (x86_64); generates SHA256SUMS; extracts
   matching CHANGELOG section as GitHub Release body.
 - **`docs/phase-3.5.md`**: documents all three install paths, the
-  customize-panel UX, Gatekeeper bypass, and what 3.5 does NOT
-  include (signing, dylib bundling, auto-update, Windows port).
+  customize-panel UX, Gatekeeper bypass.
 - README rewritten with three-channel install matrix.
 
-## [0.1.0] — 2026-04-28
+### Added (Phase 3.5+ — self-contained .pkg)
 
-First public-facing release. End-to-end working five笔 IME on macOS:
-type characters → daemon learns combinations → re-deploy → learned
-phrases appear as candidates next to stock wubi86 entries. Verified
-live on macOS 15.6 / Squirrel 1.1.2.
+- **dylib bundling via `dylibbundler`** in `build-pkg.sh`. Walks the
+  dep graph from `dafeng-daemon` and `dafeng-cli`, copies every
+  non-system dylib into `/usr/local/lib/dafeng/` and rewrites refs
+  to `@executable_path/../lib/dafeng/...`. The `.pkg` now installs
+  cleanly on machines with no Homebrew.
+- **ggml runtime plugins** (`libggml-{cpu-*,metal,blas}.so`) bundled
+  with `@rpath` install-names, soname symlinks (`libggml-base.0.dylib
+  → libggml-base.0.10.0.dylib`), and rewritten `libomp.dylib`
+  references.
+- **Ad-hoc re-signing** (`codesign --force --sign -`) of every Mach-O
+  after `install_name_tool`, fixing the silent SIGKILL (exit 137) on
+  Apple Silicon when the original signature is invalidated.
+- **Sibling-first plugin probe**: daemon resolves `<exe-dir>/../lib/dafeng/`
+  via `_NSGetExecutablePath` and probes it before brew paths, so the
+  bundle wins ggml registration regardless of install prefix.
+
+### Added (Phase 3.3 — Windows port scaffold)
+
+- **Real Named Pipe IPC** (`src/common/endpoint_win.cc`). Mirrors the
+  Unix Domain Socket backend's contract: length-prefixed framing,
+  per-call millisecond timeouts via OVERLAPPED + `WaitForSingleObject`
+  + `CancelIoEx`, cross-thread `Shutdown()` via
+  `WaitForMultipleObjects(connect_event, shutdown_event)`.
+- **Real `%APPDATA%` paths** (`src/common/paths_win.cc`).
+  `SHGetKnownFolderPath(FOLDERID_RoamingAppData)` for the data dir,
+  per-user pipe name `\\.\pipe\dafeng-daemon-<sanitized-username>` to
+  avoid cross-user collisions.
+- **Cross-platform daemon main**: `SetConsoleCtrlHandler` for
+  `CTRL_C/BREAK/CLOSE/LOGOFF/SHUTDOWN` events, drives the same
+  `g_server->Shutdown()` exit path as POSIX `sigaction`.
+- **Cross-platform `endpoint_test`**: `MakeTempEndpoint()` picks UDS
+  vs pipe naming; `SetTestEnv` shims `setenv` ↔ `_putenv_s`. New
+  Windows-specific `DefaultDaemonAddressIsPerUserPipe` test.
+- **Windows CI job** (`.github/workflows/ci.yml`): `windows-latest`
+  + MSVC + vcpkg sqlite3, builds the daemon + CLI + tests. Plugin /
+  git_sync / mlx / llama_cpp deferred — they need Weasel headers and
+  vcpkg libgit2 wiring.
+- **`docs/phase-3.3.md`**: scaffold rationale, what's still TODO
+  (Weasel integration, NSIS installer, Scheduled Task self-start,
+  enabling git_sync via vcpkg, end-to-end smoke).
+
+### Added (Phase 3.4 — SwiftUI inspector)
+
+- **`apps/inspector/`** — native macOS app **大风五笔检查器**
+  (Dafeng Inspector), SwiftPM, macOS 14+. Three tabs:
+  - **状态** — polls `dafeng-cli stats` every 3 s; cards for
+    uptime, backend, request counters, errors, mean / max latency.
+    Latency card flips orange past 30 ms (DESIGN budget).
+  - **输入历史** — opens `~/Library/Application Support/Dafeng/history.db`
+    via SQLite C API in `SQLITE_OPEN_READONLY`. Filterable by
+    text / context substring; configurable row limit.
+  - **已学到的词** — parses `dafeng_learned.dict.yaml`, preserves
+    YAML header verbatim, allows per-row delete with confirm
+    alert + "请重新部署" banner.
+- **`apps/inspector/build-app.sh`** — wraps the SwiftPM executable
+  in a minimal `.app` bundle with Info.plist + ad-hoc codesign.
+- **`packaging/macos/build-pkg.sh`** auto-builds the inspector and
+  stages it into the `.pkg`'s `Applications/` payload, so users
+  find **Dafeng Inspector** in `/Applications` after install.
+- **`docs/phase-3.4.md`** — architecture notes, what's NOT included
+  (menu-bar variant, weight-edit, daemon-control buttons, en.lproj).
 
 ### Added (Phase 2 — engine)
 
@@ -162,11 +227,14 @@ live on macOS 15.6 / Squirrel 1.1.2.
 ### Known gaps (deferred)
 
 - `reranker_mlx.cc` runs the MLX smoke test but transformer inference
-  is not yet implemented; `model_version=2` distinguishes the path.
-  → Phase 3.2.
+  is not yet implemented; users go through the llama.cpp backend
+  (Phase 3.2) instead. `model_version=2` distinguishes the path.
 - Learning round is on-demand via `dafeng-cli learn`, no scheduler.
-  → Phase 3.x.
-- Windows backend (`endpoint_win.cc`, `paths_win.cc`) is a build-time
-  stub; the rest of the source tree compiles cross-platform.
-  → Phase 3.3.
-- `learned_words.yaml` editing is by hand; no GUI. → Phase 3.4.
+- **Windows installer not yet shipped.** The Phase 3.3 scaffold
+  (Named Pipe IPC, `%APPDATA%` paths, console-ctrl handler, MSVC CI
+  build) is in place, but Weasel integration, NSIS / WiX installer,
+  and Scheduled Task self-start are still TODO. See `docs/phase-3.3.md`.
+- Apple Developer ID signing + notarization for the `.pkg` is deferred
+  (paid Apple Developer account + CI secret management).
+- `Dafeng Inspector` does not yet ship a menu-bar variant or daemon
+  start/stop controls; weight editing is delete-only.
