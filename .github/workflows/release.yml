@@ -132,9 +132,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=${GITHUB_REF_NAME:-${{ inputs.tag }}}
-          gh release view "$TAG" >/dev/null 2>&1 \
-            && gh release upload "$TAG" release/* --clobber \
-            || gh release create "$TAG" release/* \
-                  --title "$TAG" \
-                  --notes-file release-notes.md
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME:-${{ inputs.tag }}}"
+          echo "publishing tag: $TAG"
+          echo "files in release/:"
+          ls -la release/
+
+          # Explicit if/else (the previous `view && upload || create`
+          # one-liner had two failure paths that both bash-shortcircuit
+          # to exit 0 — the workflow looked successful but the release
+          # never appeared). Now: detect existence, branch, fail loud.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; uploading assets with --clobber"
+            gh release upload "$TAG" release/* --clobber
+          else
+            echo "release $TAG does NOT exist; creating fresh"
+            gh release create "$TAG" release/* \
+              --title "$TAG" \
+              --notes-file release-notes.md
+          fi
+
+          # Sanity gate: the release MUST be visible after this step,
+          # else the workflow silently lied. Fail the step explicitly.
+          echo "post-publish verification:"
+          if ! gh release view "$TAG"; then
+            echo "::error::Release $TAG not visible after publish; aborting" >&2
+            exit 1
+          fi
+          echo "✓ release $TAG published with assets:"
+          gh release view "$TAG" --json assets --jq '.assets[].name'
