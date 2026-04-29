@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 ## Version is mirrored in the VERSION file at the repo root. Keep them in
 ## sync: `cmake -B build` reads CMakeLists; release tooling reads VERSION.
 project(dafeng
-  VERSION 0.1.0
+  VERSION 0.2.0
   DESCRIPTION "Dafeng Wubi — cross-platform learning Wubi IME"
   HOMEPAGE_URL "https://github.com/kevin/dafeng-wubi"
   LANGUAGES C CXX

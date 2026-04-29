@@ -6,6 +6,91 @@ All notable changes to dafeng-wubi follow [Keep a Changelog](https://keepachange
 
 (empty)
 
+## [0.2.0] — 2026-04-29
+
+User-experience release. The headline change is **you no longer have
+to think about learning**: type, the daemon picks new words up in the
+background, RIME redeploys itself, you keep typing. Closing the gap
+between "the project knows the word" and "RIME shows the word" was
+the only manual step left in v0.1, and it's gone now.
+
+### Added
+
+- **Auto-learn loop in the daemon** (`src/daemon/auto_learn.{h,cc}`).
+  Background thread polls every 60 s, runs a learning round only when
+  three gates fire: new entries since last round, ≥ 5 min since the
+  previous round, and ≥ 30 s since the user's last commit (idle).
+  After a round that produces words, spawns `rime_deployer --build
+  ~/Library/Rime/build` and emits a macOS desktop notification ("已
+  自动学到 N 个新词"). All thresholds tunable via daemon flags.
+  ctest 152/152 (6 new fixture tests covering each gate).
+
+- **`dafeng-cli pause` / `dafeng-cli resume`** (`src/cli/main.cc`).
+  One-line laptop-battery shortcut — wraps `launchctl bootout` /
+  `bootstrap`, with `pgrep` polling so the immediate-resume race
+  ("Bootstrap failed: 5: Input/output error") is handled. Idempotent
+  on both ends.
+
+- **Status-bar menu in the Dafeng Inspector .app**
+  (`apps/inspector/Sources/DafengInspector/MenuBarController.swift`,
+  `MenuBarContent.swift`, `DafengInspectorApp.swift`). SwiftUI
+  `MenuBarExtra` scene with native `NSMenu` style. Polls daemon stats
+  every 4 s; icon shape reflects state (`bolt.fill` LLM / `bolt`
+  fast / `moon.zzz.fill` paused / `triangle` unreachable). Menu items:
+  status header, pause / resume, backend toggle (LLM ↔ fast),
+  open-window, quit. Closing the inspector window keeps the menu bar
+  alive (`applicationShouldTerminateAfterLastWindowClosed = false`).
+
+- **IME-side fallback logging** to
+  `~/Library/Logs/dafeng-filter.log` (`src/plugin/dafeng_rerank.lua`).
+  One line per `client:rerank` returning nil / empty / pcall-error,
+  with `code=`, `n=`, and reason. Lets a user reporting "felt slow at
+  16:42" hand us a real timestamp.
+
+- **`vs-vanilla-rime.md`** — full 32-item feature comparison against
+  stock RIME, broken into 7 sections (input / learning / privacy /
+  cross-platform / observability / engineering / performance) with
+  source-file links.
+
+### Fixed
+
+- **Inspector finds dafeng-cli even when it's not on $PATH**
+  (`apps/inspector/Sources/DafengInspector/DafengCLI.swift`). GUI
+  apps inherit a minimal `/usr/bin:/bin:/usr/sbin:/sbin` PATH; if the
+  user installed the LaunchAgent pointing at a dev-tree binary
+  (`build-llama/src/daemon/...`), the menu bar previously showed
+  "找不到 dafeng-cli". Now we read the LaunchAgent plist and derive
+  the cli sibling by substituting `/src/daemon/dafeng-daemon` →
+  `/src/cli/dafeng-cli`.
+
+- **Windows MSVC build now compiles** through every translation unit:
+  `_attribute__((format(printf,...)))` wrapped in a GCC/Clang-only
+  macro; `localtime_r` ifdef'd to `localtime_s`; `path::c_str()` to
+  `printf %s` switched to `.string().c_str()` to dodge `wchar_t*`;
+  SQLite paths converted via `u8string()` so non-ASCII works on
+  Windows; `WIN32_LEAN_AND_MEAN` redefinition guards added; vcpkg's
+  `SQLite3::SQLite3` IMPORTED-target absence handled with a fallback
+  to the variable form. Tests cross-platform: introduced
+  `tests/test_helpers.h` with `MakeTempDir` / `MakeTempPath` /
+  `MakeTempEndpoint` shims so 8 unit tests, 1 integration test, and
+  the IPC benchmark no longer require POSIX `mkdtemp` / `mkstemp`.
+  GitSync tests `GTEST_SKIP()` cleanly when built without libgit2.
+
+- **Release pipeline unblocked** — dropped the `macos-13` matrix arm
+  from `release.yml`. GitHub free-tier Intel runners queue for tens
+  of minutes and `publish-release` (which `needs:` both arch builds)
+  was starving. arm64-only for now; Intel returns when we have paid
+  runners or a self-hosted box. Documented in `docs/phase-3.5.md`.
+
+### Daily flow before vs. after
+
+| | v0.1 | v0.2 |
+|---|---|---|
+| New words appear | run `dafeng-cli learn`, then click 重新部署 | nothing |
+| Save battery | edit plist, reload launchd | click status bar → "暂停 daemon" |
+| Switch LLM ↔ fast | edit plist, reload launchd | click status bar → backend submenu |
+| Verify daemon health | `dafeng-cli stats` in a terminal | glance at status bar icon |
+
 ## [0.1.0] — 2026-04-28
 
 First public-facing release. End-to-end working 五笔 IME on macOS with

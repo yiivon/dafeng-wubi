@@ -107,8 +107,10 @@ dafeng-cli pause
 dafeng-cli resume    # 想用回来
 ```
 
-桌面 GUI 入口:`/Applications/Dafeng Inspector.app` —— 三个 tab 看
-状态、输入历史、学到的词,可以一键删错词。
+桌面 GUI 入口:`/Applications/Dafeng Inspector.app` —— 启动后顶上**状态
+栏(右上角)** 多一个 ⚡ 图标,点开可以**一键暂停 daemon / 切 LLM ↔ 快速
+后端**,看到 daemon 实时状态。主窗口三个 tab:状态、输入历史、学到的词,
+可以一键删错词。
 
 完整速查见 [docs/cheat-sheet.md](docs/cheat-sheet.md)(含 LLM ↔
 deterministic 后端切换)。
