@@ -61,6 +61,15 @@ AutoLearnRunner::AutoLearnRunner(std::shared_ptr<IHistoryStore> history,
       history_(std::move(history)),
       redeploy_(std::move(redeploy)),
       notify_(std::move(notify)) {
+  // Seed last_round_at_ to "long ago" so a fresh runner's very first
+  // TickForTesting() pass-the-interval gate. Default-constructed
+  // steady_clock::time_point ≈ system-boot, which can be just a few
+  // minutes old on freshly-spun CI runners — that fooled the interval
+  // gate into thinking a round had just fired and got
+  // MinIntervalBlocksRapidSecondTick to fail on Windows CI.
+  // Production callers immediately call Start(), which overwrites
+  // this with `now()` to prevent a noisy boot-time round.
+  last_round_at_ = std::chrono::steady_clock::now() - std::chrono::hours(24);
   if (!redeploy_) redeploy_ = DefaultRimeRedeploy();
   if (!notify_) notify_ = DefaultLearnNotify();
 }
