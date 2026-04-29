@@ -302,26 +302,54 @@ std::unique_ptr<Connection> ConnectEndpoint(const std::string& address) {
   std::wstring name = Utf8ToWide(address);
   if (name.empty()) return nullptr;
 
-  // Server-side ConnectNamedPipe may not have queued a fresh instance yet.
-  // WaitNamedPipeW(0) returns immediately if no instance is available; we
-  // wait briefly to give the server a chance, then bail. Caller treats
-  // failure as "daemon not running" — IME falls back to RIME-only.
-  if (!::WaitNamedPipeW(name.c_str(), 50 /*ms*/)) {
-    return nullptr;
+  // Named-pipe concurrency is per-instance: an instance accepts one
+  // client and is then "consumed" until the server creates the next
+  // one. Multiple clients arriving simultaneously will race for the
+  // same listening instance; only one CreateFileW wins, the rest see
+  // ERROR_PIPE_BUSY. Unix Domain Sockets don't have this race because
+  // the kernel queues all connect()s into the listen backlog.
+  //
+  // Compensate by retrying inside a hard 1 s budget. Each iteration
+  // waits up to 50 ms for an instance to be free, then tries to
+  // attach. If CreateFileW says BUSY (someone else won the race) we
+  // loop. If WaitNamedPipeW returns FILE_NOT_FOUND there really is
+  // no server, so we fail fast.
+  using std::chrono::steady_clock;
+  using std::chrono::milliseconds;
+  const auto deadline = steady_clock::now() + std::chrono::seconds(1);
+
+  while (steady_clock::now() < deadline) {
+    if (!::WaitNamedPipeW(name.c_str(), 50 /*ms*/)) {
+      const DWORD err = ::GetLastError();
+      if (err == ERROR_FILE_NOT_FOUND) {
+        // No server at all — caller treats this as "daemon not
+        // running" and falls back to RIME-only.
+        return nullptr;
+      }
+      // ERROR_SEM_TIMEOUT or similar: just spin on the deadline.
+      continue;
+    }
+
+    HANDLE pipe = ::CreateFileW(name.c_str(),
+                                GENERIC_READ | GENERIC_WRITE,
+                                /*share=*/0, /*sa=*/nullptr,
+                                OPEN_EXISTING, FILE_FLAG_OVERLAPPED,
+                                /*template=*/nullptr);
+    if (pipe != INVALID_HANDLE_VALUE) {
+      // Match server: byte mode for length-prefixed framing.
+      DWORD mode = PIPE_READMODE_BYTE;
+      ::SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr);
+      return std::make_unique<WinPipeConnection>(pipe);
+    }
+    const DWORD err = ::GetLastError();
+    if (err != ERROR_PIPE_BUSY) {
+      // Hard error (access denied, name invalid, etc.) — don't retry.
+      return nullptr;
+    }
+    // Lost the race for the listening instance; loop and try again.
   }
-
-  HANDLE pipe = ::CreateFileW(name.c_str(),
-                              GENERIC_READ | GENERIC_WRITE,
-                              /*share=*/0, /*sa=*/nullptr,
-                              OPEN_EXISTING, FILE_FLAG_OVERLAPPED,
-                              /*template=*/nullptr);
-  if (pipe == INVALID_HANDLE_VALUE) return nullptr;
-
-  // Match server: byte mode for length-prefixed framing.
-  DWORD mode = PIPE_READMODE_BYTE;
-  ::SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr);
-
-  return std::make_unique<WinPipeConnection>(pipe);
+  // Budget exhausted.
+  return nullptr;
 }
 
 }  // namespace dafeng
