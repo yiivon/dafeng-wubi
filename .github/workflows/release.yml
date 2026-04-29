@@ -142,22 +142,31 @@ jobs:
           # one-liner had two failure paths that both bash-shortcircuit
           # to exit 0 — the workflow looked successful but the release
           # never appeared). Now: detect existence, branch, fail loud.
+          # `--latest` and `--draft=false` explicit so a future repo
+          # default that flips to drafts doesn't ghost-publish us.
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "release $TAG already exists; uploading assets with --clobber"
             gh release upload "$TAG" release/* --clobber
+            # If the existing release happens to be a draft, mark it
+            # not-draft now so the public sees it.
+            gh release edit "$TAG" --draft=false --latest || true
           else
             echo "release $TAG does NOT exist; creating fresh"
             gh release create "$TAG" release/* \
               --title "$TAG" \
-              --notes-file release-notes.md
+              --notes-file release-notes.md \
+              --latest
           fi
 
           # Sanity gate: the release MUST be visible after this step,
           # else the workflow silently lied. Fail the step explicitly.
+          # Log the draft / prerelease bits so we can spot the cause if
+          # gh sees the release but the public REST API 404's it.
           echo "post-publish verification:"
-          if ! gh release view "$TAG"; then
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,isLatest,assets \
+              --jq '{tag: .tagName, draft: .isDraft, prerelease: .isPrerelease, latest: .isLatest, assets: [.assets[].name]}'
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "::error::Release $TAG not visible after publish; aborting" >&2
             exit 1
           fi
-          echo "✓ release $TAG published with assets:"
-          gh release view "$TAG" --json assets --jq '.assets[].name'
+          echo "✓ release $TAG published"
