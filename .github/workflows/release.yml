@@ -42,7 +42,12 @@ jobs:
       - name: Install build tools (brew)
         run: |
           brew update
-          brew install --quiet cmake ninja libgit2 llama.cpp
+          # dylibbundler is mandatory: build-pkg.sh uses it to walk the
+          # dep graph + rewrite install_names so the .pkg works on
+          # machines that have no Homebrew. Without it, build-pkg.sh
+          # falls back to a 400 KB unbundled .pkg that crashes on
+          # launch on stock macOS.
+          brew install --quiet cmake ninja libgit2 llama.cpp dylibbundler
 
       - name: Configure (LLAMA_CPP=ON)
         run: |

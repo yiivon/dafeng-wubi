@@ -88,13 +88,22 @@ DAFENG_LIBDIR="$BASE_ROOT/usr/local/lib/dafeng"
 mkdir -p "$DAFENG_LIBDIR"
 
 if ! command -v dylibbundler >/dev/null 2>&1; then
-  echo "[warn] dylibbundler not installed — .pkg will require brew on target."
-  echo "       brew install dylibbundler"
-else
-  # `--no-codesign` because we don't have an Apple Developer ID yet;
-  # the .pkg itself will run unsigned. The cli + daemon binaries are
-  # both fixed; --bundle-deps walks the transitive graph.
-  dylibbundler \
+  # We used to fall back to a "warn and continue" mode here. That
+  # silently shipped a 400 KB .pkg in v0.2.0 release CI that couldn't
+  # run on stock macOS — every dylib reference still pointed at
+  # /opt/homebrew. Hard-fail so this can't happen again. If you
+  # genuinely want a quick local test build without bundling, comment
+  # this block out by hand.
+  echo "[error] dylibbundler not installed; refusing to ship an" >&2
+  echo "        unbundled .pkg that won't run without Homebrew." >&2
+  echo "        Install:  brew install dylibbundler" >&2
+  exit 2
+fi
+
+# `--no-codesign` because we don't have an Apple Developer ID yet;
+# the .pkg itself will run unsigned. The cli + daemon binaries are
+# both fixed; --bundle-deps walks the transitive graph.
+dylibbundler \
       --fix-file "$BASE_ROOT/usr/local/bin/dafeng-daemon" \
       --fix-file "$BASE_ROOT/usr/local/bin/dafeng-cli" \
       --bundle-deps \
@@ -171,7 +180,6 @@ else
   otool -L "$BASE_ROOT/usr/local/bin/dafeng-daemon" \
       | awk 'NR>1 && $1 !~ /^\/(usr\/lib|System)/' \
       | sed 's/^/    /'
-fi
 
 cp "$BUILD_DIR/src/plugin/dafeng_lua_bridge.so" "$BASE_ROOT/usr/local/share/dafeng/"
 cp "$REPO_ROOT/src/plugin/rime.lua" "$BASE_ROOT/usr/local/share/dafeng/"
