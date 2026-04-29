@@ -36,7 +36,22 @@ jobs:
         run: cmake --build build -j
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        # On failure, dump the full LastTest.log inline so the action log
+        # shows the failing test name + output without needing artifact
+        # download (which requires auth even for public repos).
+        run: |
+          set +e
+          ctest --test-dir build --output-on-failure
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "============================================"
+            echo "== LastTest.log (verbatim) =="
+            echo "============================================"
+            cat build/Testing/Temporary/LastTest.log || true
+            echo "============================================"
+            ctest --test-dir build --rerun-failed --extra-verbose || true
+          fi
+          exit $rc
 
       - name: Benchmarks (informational)
         run: |
@@ -114,7 +129,20 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+        # Dump LastTest.log inline on failure so we can see the failing
+        # test name + output without authenticated artifact download.
+        run: |
+          ctest --test-dir build -C RelWithDebInfo --output-on-failure
+          $rc = $LASTEXITCODE
+          if ($rc -ne 0) {
+            Write-Host "============================================"
+            Write-Host "== LastTest.log (verbatim) =="
+            Write-Host "============================================"
+            Get-Content build/Testing/Temporary/LastTest.log -ErrorAction SilentlyContinue
+            Write-Host "============================================"
+            ctest --test-dir build -C RelWithDebInfo --rerun-failed --extra-verbose
+          }
+          exit $rc
 
       - name: Upload test logs on failure
         if: failure()
